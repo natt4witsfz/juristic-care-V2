@@ -114,6 +114,18 @@
     return data || null;
   }
 
+  // Stage 3 canonical job read path. list_jobs_for_current_user() is the only
+  // supported client job read: RLS-filtered via can_read_job, relational
+  // columns authoritative, no PIN material. Uses the anon (publishable) key +
+  // the caller's session only.
+  async function listJobs() {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("list_jobs_for_current_user");
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
   async function saveSnapshot(snapshot) {
     const supabaseClient = getClient();
     if (!supabaseClient) return null;
@@ -265,6 +277,7 @@
     signOut,
     loadCurrentUserContext,
     loadAppData,
+    listJobs,
     saveSnapshot,
     createJob,
     assignJob,

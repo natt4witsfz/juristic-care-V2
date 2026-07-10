@@ -20,9 +20,9 @@ test.todo("Stage 2: ingest_google_form_submission is transactional and rolls bac
 test.todo("Stage 2: get_app_bootstrap never serves jobs from app_snapshots");
 
 // ---- Stage 3 — frontend relational read path ----
-test.todo("Stage 3: job cache hydrates only from Supabase read RPC");
-test.todo("Stage 3: remoteSnapshot() no longer contains a jobs field");
-test.todo("Stage 3: with app_snapshots populated, relational jobs still appear");
+// Activated: see test/stage3-read-path.test.js (source-level guards). The
+// live cross-session/staging behavior is validated in the Stage 3 staging
+// dry-run, not claimed here.
 
 // ---- Stage 4 — frontend record-level writes ----
 test.todo("Stage 4: createJob/assignJob/updateJobStatus/verifyCompletion call RPCs");

@@ -88,7 +88,12 @@ PIN material (`create_job` strips `closePin` before persisting;
 
 **Errors:** none — unauthenticated/unknown callers receive an empty set.
 
-From Stage 3 this is the **only** client job-read path.
+From Stage 3 this is the **only** client job-read path. **Stage 3 status:**
+the frontend consumes it via `JuristicSupabase.listJobs()` →
+`loadJobsFromSupabase()`; the in-memory `jobs` array is a render cache
+replaced atomically per read, the snapshot bridge excludes the job domain,
+and a failed read fails closed (visible error + bounded retry, no
+localStorage fallback). See `docs/audit/STAGE-3-GATE-REPORT.md`.
 
 ## 2. `create_job(p_payload jsonb) → jsonb` — Stage 2
 

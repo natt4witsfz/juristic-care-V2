@@ -672,8 +672,14 @@ const seedResidentRooms = [
   }
 ];
 
-let jobs = JSON.parse(localStorage.getItem("juristicJobsV2") || "null") || seedJobs;
-if (!jobs.some(job => job.source === "Google Form" || job.raw)) {
+// Stage 3 single-authority rule: with Supabase enabled, `jobs` is a render
+// cache hydrated ONLY from the relational read RPC (list_jobs_for_current_user)
+// after login; localStorage/seed jobs are demo-mode (SUPABASE_ENABLED=false) only.
+const jobsRelationalMode = !!window.JuristicSupabase?.isEnabled?.();
+let jobs = jobsRelationalMode
+  ? []
+  : (JSON.parse(localStorage.getItem("juristicJobsV2") || "null") || seedJobs);
+if (!jobsRelationalMode && !jobs.some(job => job.source === "Google Form" || job.raw)) {
   jobs = seedJobs;
   localStorage.setItem("juristicJobsV2", JSON.stringify(jobs));
 }
@@ -1276,7 +1282,14 @@ function inferDepartment(user) {
   return user.canAssign ? "juristic" : "juristic";
 }
 
-function saveJobs() { localStorage.setItem("juristicJobsV2", JSON.stringify(jobs)); queueBackendSync(); }
+function saveJobs() {
+  // Stage 3: in Supabase mode jobs are never persisted locally or synced via
+  // snapshot — the relational database is the only job authority and the
+  // in-memory array is a render cache for the current session.
+  if (supabaseEnabled()) return;
+  localStorage.setItem("juristicJobsV2", JSON.stringify(jobs));
+  queueBackendSync();
+}
 function saveLogs() { localStorage.setItem("juristicAdminLogs", JSON.stringify(adminLogs)); queueBackendSync(); }
 function saveStaffLogs() { localStorage.setItem("juristicStaffLogs", JSON.stringify(staffLogs)); queueBackendSync(); }
 function saveResidentLogs() { localStorage.setItem("juristicResidentLogs", JSON.stringify(residentLogs)); queueBackendSync(); }
@@ -1516,8 +1529,9 @@ function exportFinanceReportCsv() {
   showToast(currentLang === "th" ? "Export งบการเงินแล้ว" : "Finance report exported");
 }
 function remoteSnapshot() {
+  // Stage 3: the job domain is excluded from the snapshot bridge. Jobs are
+  // read only from the relational RPC and must never ride app_snapshots.
   return {
-    jobs,
     adminLogs,
     staffLogs,
     residentLogs,
@@ -1546,10 +1560,8 @@ async function loadRemoteSnapshot() {
     remoteSyncBusy = true;
     const data = await remoteRequest("getSnapshot");
     const snapshot = data?.snapshot || {};
-    if (Array.isArray(snapshot.jobs) && snapshot.jobs.length) {
-      jobs = snapshot.jobs.map(normalizeJob);
-      localStorage.setItem("juristicJobsV2", JSON.stringify(jobs));
-    }
+    // Stage 3: legacy Apps Script job sync is disabled — a jobs field in an
+    // old remote snapshot is ignored entirely.
     if (Array.isArray(snapshot.adminLogs)) {
       adminLogs = snapshot.adminLogs;
       localStorage.setItem("juristicAdminLogs", JSON.stringify(adminLogs));
@@ -1617,10 +1629,9 @@ function upsertRuntimeUser(user) {
   return existing || user;
 }
 function applyBackendSnapshot(snapshot = {}) {
-  if (Array.isArray(snapshot.jobs)) {
-    jobs = snapshot.jobs.map(normalizeJob).filter(Boolean);
-    localStorage.setItem("juristicJobsV2", JSON.stringify(jobs));
-  }
+  // Stage 3: any jobs field in the payload — including one inside an old
+  // app_snapshots row — is ignored. Jobs are hydrated exclusively by
+  // loadJobsFromSupabase() and a snapshot can never overwrite them.
   if (Array.isArray(snapshot.adminLogs)) {
     adminLogs = snapshot.adminLogs;
     localStorage.setItem("juristicAdminLogs", JSON.stringify(adminLogs));
@@ -1661,20 +1672,54 @@ function applyBackendSnapshot(snapshot = {}) {
     syncOrganizationDraftFromSaved();
   }
 }
+// Stage 3 canonical job read path: list_jobs_for_current_user() via the
+// provider. The cache is replaced atomically after a successful read; a
+// failed read FAILS CLOSED (no localStorage/snapshot fallback) with a
+// user-visible error and a bounded automatic retry.
+let jobsLoadFailed = false;
+async function loadJobsFromSupabase(attempt = 0) {
+  if (!supabaseEnabled()) return false;
+  try {
+    const rows = await supabaseProvider.listJobs();
+    if (!Array.isArray(rows)) throw new Error("Invalid job list response");
+    jobs = rows.map(normalizeJob).filter(Boolean);
+    jobsLoadFailed = false;
+    return true;
+  } catch (error) {
+    console.warn("Relational job load failed", error);
+    // No second authority: keep only what this session already loaded
+    // (empty on first load); locally stored jobs are never consulted.
+    jobsLoadFailed = true;
+    if (attempt < 2) {
+      showToast(currentLang === "th" ? "โหลดข้อมูลงานไม่สำเร็จ กำลังลองใหม่..." : "Job load failed; retrying...");
+      window.setTimeout(async () => {
+        if (await loadJobsFromSupabase(attempt + 1)) renderAll();
+      }, 5000);
+    } else {
+      showToast(currentLang === "th" ? "โหลดข้อมูลงานไม่สำเร็จ กรุณาโหลดหน้าใหม่อีกครั้ง" : "Job load failed; please reload the page");
+    }
+    return false;
+  }
+}
 async function loadBackendSnapshot() {
   if (supabaseEnabled()) {
+    // Jobs come only from the relational read RPC…
+    await loadJobsFromSupabase();
+    // …then non-job domains come from the bootstrap (whose jobs key, and any
+    // stale snapshot jobs inside it, applyBackendSnapshot ignores).
     try {
       supabaseSyncBusy = true;
       const snapshot = await supabaseProvider.loadAppData();
       if (snapshot) applyBackendSnapshot(snapshot);
-      renderAll();
-      return;
     } catch (error) {
-      console.warn("Supabase sync load failed", error);
-      showToast(currentLang === "th" ? "Supabase load failed; using local data" : "Supabase load failed; using local data");
+      console.warn("Supabase bootstrap load failed", error);
+      showToast(currentLang === "th" ? "โหลดข้อมูลเสริมไม่สำเร็จ" : "Bootstrap (non-job) load failed");
     } finally {
       supabaseSyncBusy = false;
     }
+    renderAll();
+    // Supabase mode never falls back to the legacy Apps Script snapshot.
+    return;
   }
   loadRemoteSnapshot();
 }
