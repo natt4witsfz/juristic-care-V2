@@ -1,0 +1,18 @@
+{
+  "//": "Config scaffolded for the team. Requires eslint (npm install) which was unreachable in the Stage 0 build environment. Static checking in Stage 0 is done via `npm run check` (node --check).",
+  "root": true,
+  "env": { "browser": true, "es2022": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "script" },
+  "extends": ["eslint:recommended"],
+  "globals": {
+    "supabase": "readonly",
+    "JuristicSecurity": "readonly",
+    "JURISTIC_CONFIG": "writable"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-undef": "error",
+    "no-console": ["warn", { "allow": ["warn", "error"] }]
+  },
+  "ignorePatterns": ["node_modules/", "supabase/functions/**"]
+}

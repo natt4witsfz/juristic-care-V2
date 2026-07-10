@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Local config that may contain real secrets (keep config.js empty/placeholder in VCS)
+config.local.js
+.env
+.env.*
+!.env.example
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+.supabase/
+
+# Build / test output
+coverage/
+playwright-report/
+test-results/
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Local data dumps / exported media (never commit real resident data)
+*.local.json
+exports/
+uploads-local/
+DEPLOYED-URLS.md

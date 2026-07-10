@@ -1,0 +1,283 @@
+(function () {
+  const config = window.JURISTIC_CONFIG || {};
+  const AUTH_DOMAIN = "auth.juristic.local";
+  const BUCKETS = {
+    jobAttachments: "job-attachments",
+    announcementFiles: "announcement-files",
+    profileImages: "profile-images"
+  };
+
+  let client = null;
+
+  function isEnabled() {
+    return !!(
+      config.SUPABASE_ENABLED &&
+      config.SUPABASE_URL &&
+      config.SUPABASE_ANON_KEY &&
+      window.supabase?.createClient
+    );
+  }
+
+  function getClient() {
+    if (!isEnabled()) return null;
+    if (!client) {
+      client = window.supabase.createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
+    }
+    return client;
+  }
+
+  function normalizeLoginId(loginId = "") {
+    return String(loginId).trim().toLowerCase();
+  }
+
+  function loginIdToEmail(loginId = "") {
+    const normalized = normalizeLoginId(loginId)
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return `${normalized || "user"}@${AUTH_DOMAIN}`;
+  }
+
+  function appUserFromRecord(record = {}) {
+    const firstName = record.first_name || "";
+    const lastName = record.last_name || "";
+    const displayName = record.display_name || [firstName, lastName].filter(Boolean).join(" ").trim();
+    const role = record.app_role || record.role || "resident";
+    const department = record.department || (role === "resident" ? "resident" : "juristic");
+    return {
+      id: record.id || record.auth_user_id,
+      authUserId: record.auth_user_id,
+      firstName,
+      lastName,
+      name: displayName,
+      enName: record.en_name || displayName,
+      nickName: record.nickname || "",
+      position: record.position || "",
+      department,
+      room: record.login_id || record.room_no || "",
+      roomId: record.room_id || "",
+      role,
+      roleKey: record.role_key || `role.${role}`,
+      isCoAdmin: !!record.is_co_admin || role === "coadmin",
+      assignL1: !!record.assign_l1,
+      assignL2: !!record.assign_l2,
+      canAssign: !!record.can_assign,
+      permissions: record.permissions || {},
+      profileImage: record.profile_image_path || "",
+      phone: record.phone || "",
+      isSupabaseUser: true
+    };
+  }
+
+  async function signIn(loginId, password) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const email = loginIdToEmail(loginId);
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return loadCurrentUserContext();
+  }
+
+  async function signOut() {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+  }
+
+  async function loadCurrentUserContext() {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser();
+    if (authError) throw authError;
+    const authUserId = authData?.user?.id;
+    if (!authUserId) return null;
+    const { data, error } = await supabaseClient
+      .from("app_users")
+      .select("*")
+      .eq("auth_user_id", authUserId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? appUserFromRecord(data) : null;
+  }
+
+  async function loadAppData() {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("get_app_bootstrap");
+    if (error) throw error;
+    return data || null;
+  }
+
+  async function saveSnapshot(snapshot) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("save_client_snapshot", {
+      p_snapshot: snapshot
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function createJob(payload) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("create_job", { p_payload: payload });
+    if (error) throw error;
+    return data;
+  }
+
+  async function assignJob(jobId, assigneeId, extra = {}) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("assign_job", {
+      p_job_id: jobId,
+      p_assignee_id: assigneeId,
+      p_extra: extra
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function updateJobStatus(jobId, payload) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("update_job_status", {
+      p_job_id: jobId,
+      p_payload: payload
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function verifyCompletion(jobId) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("verify_job_completion", {
+      p_job_id: jobId
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function listLogs() {
+    const data = await loadAppData();
+    return {
+      adminLogs: data?.adminLogs || [],
+      staffLogs: data?.staffLogs || [],
+      residentLogs: data?.residentLogs || []
+    };
+  }
+
+  async function savePermissions(userId, permissions) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient
+      .from("permissions")
+      .upsert({
+        user_id: userId,
+        sidebar: permissions?.sidebar || {},
+        actions: permissions?.actions || {}
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveSidebarOrder(userId, orderedKeys) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient
+      .from("sidebar_preferences")
+      .upsert({
+        user_id: userId,
+        ordered_keys: orderedKeys || []
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  function safeFileName(name = "file") {
+    return String(name)
+      .normalize("NFKD")
+      .replace(/[^\w.\-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "file";
+  }
+
+  async function uploadFile(bucket, file, options = {}) {
+    const supabaseClient = getClient();
+    if (!supabaseClient || !file) return null;
+    const folder = options.folder || "general";
+    const prefix = options.prefix || crypto.randomUUID?.() || String(Date.now());
+    const path = `${folder}/${prefix}-${safeFileName(file.name)}`;
+    const { data, error } = await supabaseClient.storage
+      .from(bucket)
+      .upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || "application/octet-stream"
+      });
+    if (error) throw error;
+    return {
+      bucket,
+      path: data.path,
+      mimeType: file.type || "",
+      size: file.size || 0,
+      originalName: file.name || ""
+    };
+  }
+
+  async function uploadJobAttachment(file, jobId = "draft") {
+    return uploadFile(BUCKETS.jobAttachments, file, { folder: `jobs/${jobId}` });
+  }
+
+  async function uploadAnnouncementFile(file, announcementId = "draft") {
+    return uploadFile(BUCKETS.announcementFiles, file, { folder: `announcements/${announcementId}` });
+  }
+
+  async function uploadProfileImage(file, userId = "draft") {
+    return uploadFile(BUCKETS.profileImages, file, { folder: `profiles/${userId}` });
+  }
+
+  async function signedUrl(bucket, path, expiresIn = 600) {
+    const supabaseClient = getClient();
+    if (!supabaseClient || !bucket || !path) return "";
+    const { data, error } = await supabaseClient.storage.from(bucket).createSignedUrl(path, expiresIn);
+    if (error) throw error;
+    return data?.signedUrl || "";
+  }
+
+  window.JuristicSupabase = {
+    isEnabled,
+    getClient,
+    loginIdToEmail,
+    signIn,
+    signOut,
+    loadCurrentUserContext,
+    loadAppData,
+    saveSnapshot,
+    createJob,
+    assignJob,
+    updateJobStatus,
+    verifyCompletion,
+    listLogs,
+    savePermissions,
+    saveSidebarOrder,
+    uploadJobAttachment,
+    uploadAnnouncementFile,
+    uploadProfileImage,
+    signedUrl,
+    BUCKETS
+  };
+  document.documentElement.dataset.juristicSupabaseAdapter = "loaded";
+})();

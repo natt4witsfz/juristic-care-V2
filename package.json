@@ -1,0 +1,20 @@
+{
+  "name": "juristic-care",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Condominium operations management web app (Supabase-first).",
+  "type": "commonjs",
+  "scripts": {
+    "serve": "python3 -m http.server 4173",
+    "check": "node --check app.js && node --check profiles.js && node --check supabase-client.js && node --check config.js && node --check js/security.js",
+    "test": "node --test",
+    "lint": "eslint . || echo 'ESLint not installed in this environment; see .eslintrc.json'",
+    "check:functions": "deno check supabase/functions/*/index.ts || echo 'Deno not installed in this environment'"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "//": "ESLint / Vitest / Playwright are declared for the team; the npm registry was unreachable in the build environment, so Stage 0 runs the zero-install node:test suite. Install these when the registry is available.",
+    "eslint": "^9.0.0",
+    "vitest": "^2.0.0"
+  }
+}

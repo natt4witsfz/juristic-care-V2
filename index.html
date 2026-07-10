@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#146c5a">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title data-i18n="meta.title">Juristic Care — ระบบรับแจ้งและบริหารงานนิติบุคคล</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260709-backoffice-sidebar-v5">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <section id="authView" class="auth-view">
+    <div class="auth-art">
+      <div class="brand brand-light">
+        <span class="brand-mark">J</span>
+        <span><strong>Juristic</strong> Care</span>
+      </div>
+      <div class="auth-copy">
+        <span class="eyebrow" data-i18n="auth.eyebrow">Awesome Communicate Service</span>
+        <h1 data-i18n-html="auth.heroTitle">ทุกปัญหาในบ้าน<br>มีคนรับช่วงต่อ</h1>
+        <p data-i18n-html="auth.heroText">แจ้ง ติดตาม และจัดการงานของนิติบุคคล<br>ในที่เดียว โปร่งใส และไม่ตกหล่น</p>
+        <div class="auth-stats">
+          <div><strong id="authTotalIssues">0</strong><span data-i18n="auth.totalIssues">จำนวนปัญหาทั้งหมด</span></div>
+          <div><strong id="authSolvedIssues">0</strong><span data-i18n="auth.solvedIssues">แก้ไขแล้ว</span></div>
+        </div>
+      </div>
+      <div class="art-orb orb-one"></div>
+      <div class="art-orb orb-two"></div>
+      <div class="building-lines" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <div class="auth-panel">
+      <button class="language-toggle auth-language-toggle" id="authLanguageToggle" type="button" aria-label="Switch language">EN</button>
+      <div class="mobile-brand brand">
+        <span class="brand-mark">J</span>
+        <span><strong>Juristic</strong> Care</span>
+      </div>
+      <div class="auth-box">
+        <div class="auth-heading">
+          <span class="status-dot"></span>
+          <span data-i18n="auth.ready">ระบบพร้อมให้บริการ</span>
+        </div>
+        <h2 id="authTitle" data-i18n="auth.loginTitle">ยินดีต้อนรับกลับ</h2>
+        <p id="authSubtitle" data-i18n="auth.loginSubtitle">เข้าสู่ระบบเพื่อดูสถานะงานของห้องคุณ</p>
+
+        <form id="loginForm">
+          <label for="roomNumber" data-i18n="auth.roomLabel">เลขห้อง</label>
+          <div class="input-wrap">
+            <span class="input-icon">⌂</span>
+            <input id="roomNumber" name="roomNumber" autocomplete="username" placeholder="เช่น A-1204" data-i18n-placeholder="auth.roomPlaceholder" required>
+          </div>
+          <label for="password" data-i18n="auth.passwordLabel">รหัสผ่าน</label>
+          <div class="input-wrap">
+            <span class="input-icon">●</span>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="กรอกรหัสผ่าน" data-i18n-placeholder="auth.passwordPlaceholder" minlength="4" required>
+            <button class="eye-btn" type="button" id="togglePassword" aria-label="แสดงหรือซ่อนรหัสผ่าน" data-i18n-aria-label="auth.togglePassword">◉</button>
+          </div>
+          <button class="primary-btn auth-submit" type="submit">
+            <span data-i18n="auth.loginButton">เข้าสู่ระบบ</span> <span>→</span>
+          </button>
+        </form>
+
+        <div class="auth-help">
+          <button id="setupToggle" class="link-btn" type="button" data-i18n="auth.setupLink">เข้าใช้งานครั้งแรก / ตั้งรหัสผ่าน</button>
+        </div>
+        <p class="privacy-note" data-i18n="auth.privacy">ข้อมูลของคุณถูกใช้เพื่อการบริหารอาคารเท่านั้น</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="appView" class="app-view hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">J</span>
+        <span><strong>Juristic</strong> Care</span>
+      </div>
+
+      <nav class="main-nav" aria-label="เมนูหลัก" data-i18n-aria-label="nav.mainMenu">
+        <button class="nav-item" data-view="googleForms"><span>G</span> <span data-i18n="nav.googleForms">Google Forms</span></button>
+        <button class="nav-item active" data-view="dashboard"><span>▦</span> <span data-i18n="nav.dashboard">ภาพรวม</span></button>
+        <button class="nav-item" data-view="myjobs"><span>✓</span> <span data-i18n="nav.myJobs">งานของฉัน</span></button>
+        <button class="nav-item" data-view="commonWork"><span>▧</span> <span data-i18n="nav.commonWork">งานส่วนกลาง</span></button>
+        <button class="nav-item resident-work-only" data-view="residentWork"><span>▨</span> <span data-i18n="nav.residentWork">งานของลูกบ้าน</span></button>
+        <button class="nav-item" data-view="finance"><span>฿</span> <span data-i18n="nav.finance">งบการเงิน</span></button>
+        <button class="nav-item" data-view="calendar"><span>◴</span> <span data-i18n="nav.calendar">ปฏิทิน</span></button>
+        <button class="nav-item" data-view="pool"><span>◎</span> <span data-i18n="nav.pool">งานจากG-Form</span> <b id="poolBadge">0</b></button>
+        <button class="nav-item" data-view="staffJobs"><span>◫</span> <span data-i18n="nav.staffJobs">งานของทีมงาน</span></button>
+        <button class="nav-item" data-view="roomjobs"><span>⌂</span> <span data-i18n="nav.roomJobs">งานของห้อง</span></button>
+        <div class="nav-group" data-sidebar-group="backoffice">
+          <button class="nav-item nav-group-toggle" type="button" data-backoffice-toggle><span>▣</span> <span data-i18n="nav.backoffice">ระบบหลังบ้าน</span><i>▾</i></button>
+          <div class="nav-submenu" id="backofficeSubnav">
+            <button class="nav-item manage-team-only" data-view="team"><span>♙</span> <span data-i18n="nav.team">พนักงานและบริษัทคู่สัญญา</span></button>
+            <button class="nav-item manage-team-only" data-view="residents"><span>▤</span> <span data-i18n="nav.residents">ลูกบ้าน</span></button>
+            <button class="nav-item manage-team-only" data-view="organization"><span>◎</span> <span data-i18n="nav.organization">Organization Chart</span></button>
+            <button class="nav-item manage-team-only" data-view="backhouse"><span>▣</span> <span data-i18n="nav.backhouse">ประกาศ</span></button>
+            <button class="nav-item manage-permissions-only" data-view="permissions"><span>⚙</span> <span data-i18n="nav.permissions">สิทธิ์การใช้งาน</span></button>
+            <button class="nav-item manage-team-only" data-view="logs"><span>☰</span> <span data-i18n="nav.logs">Log</span></button>
+          </div>
+        </div>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-user">
+        <div class="avatar" id="sidebarAvatar">นบ</div>
+        <div><strong id="sidebarName">นภา บริหาร</strong><small id="sidebarRole">ผู้ดูแลระบบ</small></div>
+        <button class="account-menu-btn" id="accountMenuBtn" type="button" aria-label="เมนูบัญชี">•••</button>
+      </div>
+      <div class="account-menu hidden" id="accountMenu">
+        <div class="admin-view-switch hidden" id="adminViewSwitch">
+          <label>ตรวจมุมมอง<select id="adminViewAsSelect">
+            <option value="admin">Admin</option>
+            <option value="coadmin">Co-Admin</option>
+            <option value="committee">คณะกรรมการ</option>
+            <option value="juristic">นิติ</option>
+            <option value="technician">ช่าง</option>
+            <option value="housekeeping">แม่บ้าน</option>
+            <option value="security_staff">รักษาความปลอดภัย</option>
+            <option value="gardener">คนสวน</option>
+            <option value="resident">ลูกบ้าน</option>
+          </select></label>
+          <button type="button" id="applyAdminViewAsBtn">สลับมุมมอง</button>
+        </div>
+        <button type="button" id="exitAdminPreviewBtn" class="hidden">กลับสู่ Admin</button>
+        <button type="button" id="editOwnProfileBtn">แก้ไขโปรไฟล์</button>
+        <button type="button" id="changeOwnPasswordBtn">เปลี่ยนรหัสผ่านของฉัน</button>
+        <button type="button" id="exportEmployeesBtn" class="admin-only">Export รายชื่อพนักงาน CSV</button>
+        <button type="button" id="logoutBtn"><span>↪</span> <span data-i18n="nav.logout">ออกจากระบบ</span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn menu-btn" aria-label="เปิดเมนู" data-i18n-aria-label="common.openMenu">☰</button>
+        <div class="mobile-brand-inline">
+          <span class="brand-mark">J</span>
+        </div>
+        <div class="page-heading">
+          <h1 id="pageTitle">ภาพรวมงาน</h1>
+          <p id="pageSubtitle">ติดตามและบริหารงานทั้งหมดภายในโครงการ</p>
+        </div>
+        <div class="top-actions">
+          <button class="language-toggle" id="languageToggle" type="button" aria-label="Switch language">EN</button>
+          <button class="icon-btn notification-btn" id="notificationBtn" aria-label="การแจ้งเตือน" data-i18n-aria-label="common.notifications">♢<i></i><b id="notificationCount">0</b></button>
+          <div class="notification-panel hidden" id="notificationPanel"></div>
+          <button class="primary-btn admin-only" id="createJobBtn"><span>＋</span> <span data-i18n="common.createJob">สร้างงานใหม่</span></button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="dashboardView" class="view active">
+          <div class="welcome-row">
+            <div>
+              <p class="overline" id="currentDateLabel">กำลังโหลดวันที่...</p>
+              <h2>สวัสดี, <span id="welcomeName">คุณนภา</span> 👋</h2>
+              <p data-i18n-html="dashboard.todayWorkText">วันนี้มี <strong id="todayWork">5 งาน</strong> ที่ทีมนิติและคณะกรรมการกำลังดูแล</p>
+            </div>
+            <div class="quick-filter">
+              <button class="active" data-dashboard-range="today" data-i18n="dashboard.today">วันนี้</button><button data-dashboard-range="7" data-i18n="dashboard.sevenDays">ย้อนหลัง 7 วัน</button><button data-dashboard-range="30" data-i18n="dashboard.thirtyDays">ย้อนหลัง 30 วัน</button>
+            </div>
+          </div>
+
+          <div class="stat-grid">
+            <article class="stat-card accent-amber" data-status-filter="open">
+              <div class="stat-top"><span class="stat-icon">⌛</span><span class="trend up" data-i18n="dashboard.plusTwoToday">+2 วันนี้</span></div>
+              <strong id="statWaiting">0</strong><span data-i18n="status.open">เปิดงาน</span>
+              <div class="progress"><i style="width: 38%"></i></div>
+            </article>
+            <article class="stat-card accent-blue" data-status-filter="received">
+              <div class="stat-top"><span class="stat-icon">↻</span><span class="trend" data-i18n="status.received">รับเรื่อง</span></div>
+              <strong id="statProgress">0</strong><span data-i18n="dashboard.inProgressLong">อยู่ระหว่างดำเนินการ</span>
+              <div class="progress"><i style="width: 66%"></i></div>
+            </article>
+            <article class="stat-card accent-green" data-status-filter="completed">
+              <div class="stat-top"><span class="stat-icon">✓</span><span class="trend down" data-i18n="dashboard.plusTwelveMonth">+12% เดือนนี้</span></div>
+              <strong id="statDone">0</strong><span data-i18n="status.completed">แก้ไขเรียบร้อยสมบูรณ์แล้ว</span>
+              <div class="progress"><i style="width: 84%"></i></div>
+            </article>
+            <article class="stat-card accent-purple">
+              <div class="stat-top"><span class="stat-icon">★</span><span class="trend" data-i18n="dashboard.fromReviews">จาก 28 รีวิว</span></div>
+              <strong>4.8</strong><span data-i18n="dashboard.satisfaction">คะแนนความพึงพอใจ</span>
+              <div class="rating-stars">★★★★★</div>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel jobs-panel">
+              <div class="panel-header">
+                <div><h3 data-i18n="dashboard.careJobs">งานที่ต้องดูแล</h3><p data-i18n="dashboard.latestJobs">รายการล่าสุดที่ต้องติดตาม</p></div>
+                <div class="panel-actions">
+                  <div class="view-switch" data-view-switch="dashboard" aria-label="สลับมุมมอง">
+                    <button type="button" class="active" data-view-mode="list" data-view-scope="dashboard">☷</button>
+                    <button type="button" data-view-mode="grid" data-view-scope="dashboard">▦</button>
+                  </div>
+                  <button class="link-btn strong" data-go="myjobs"><span data-i18n="common.viewAll">ดูทั้งหมด</span> →</button>
+                </div>
+              </div>
+              <div id="dashboardJobs" class="job-list"></div>
+            </section>
+
+            <aside class="panel activity-panel">
+              <div class="panel-header"><div><h3 data-i18n="dashboard.recentActivity">ความเคลื่อนไหวล่าสุด</h3><p data-i18n="dashboard.teamUpdates">อัปเดตจากทีมงาน</p></div></div>
+              <div id="activityList" class="activity-list"></div>
+            </aside>
+          </div>
+
+          <section class="panel category-panel">
+            <div class="panel-header">
+              <div><h3 data-i18n="dashboard.categoryOverview">ภาพรวมตามประเภทของเหตุที่เกิดขึ้น</h3><p data-i18n="dashboard.monthlyJobs">จำนวนงานที่รับแจ้งตามช่วงวันที่ที่เลือก</p></div>
+            </div>
+            <div id="categoryBars" class="category-bars"></div>
+          </section>
+        </section>
+
+        <section id="listView" class="view">
+          <div class="list-toolbar">
+            <div class="search-box"><span>⌕</span><input id="jobSearch" placeholder="ค้นหาจากหัวข้อ เลขห้อง หรือเลขที่งาน..." data-i18n-placeholder="list.searchPlaceholder"></div>
+            <select id="statusFilter" aria-label="กรองสถานะ" data-i18n-aria-label="list.statusFilter">
+              <option value="all" data-i18n="list.allStatuses">ทุกสถานะ</option>
+              <option value="open" data-i18n="status.open">เปิดงาน</option>
+              <option value="received" data-i18n="status.received">รับเรื่อง</option>
+              <option value="pending_inspection" data-i18n="status.pending_inspection">รอตรวจสอบ</option>
+              <option value="inspected_waiting_repair" data-i18n="status.inspected_waiting_repair">ตรวจสอบแล้วรอแก้ไข/อะไหล่</option>
+              <option value="completed" data-i18n="status.completed">แก้ไขเรียบร้อยสมบูรณ์แล้ว</option>
+              <option value="repaired_follow_up" data-i18n="status.repaired_follow_up">แก้ไขแล้ว รอติดตาม</option>
+              <option value="temporary_waiting_parts" data-i18n="status.temporary_waiting_parts">แก้ไขเบื้องต้น รออะไหล่/ผู้รับเหมา</option>
+              <option value="waiting_owner_or_admin_verification" data-i18n="status.waiting_owner_or_admin_verification">ช่างแจ้งเสร็จแล้ว รอตรวจสอบ</option>
+              <option value="rejected" data-i18n="status.rejected">ปฏิเสธงาน</option>
+            </select>
+            <select id="categoryFilter" aria-label="กรองประเภท" data-i18n-aria-label="list.categoryFilter"><option value="all" data-i18n="list.allCategories">ทุกประเภท</option></select>
+          </div>
+          <div class="list-summary">
+            <p data-i18n-html="list.resultCount">พบ <strong id="resultCount">0</strong> รายการ</p>
+            <div class="view-switch" data-view-switch="jobs" aria-label="สลับมุมมอง">
+              <button type="button" class="active" data-view-mode="list" data-view-scope="jobs">☷</button>
+              <button type="button" data-view-mode="grid" data-view-scope="jobs">▦</button>
+            </div>
+          </div>
+          <div id="allJobsList" class="all-jobs-list"></div>
+        </section>
+
+        <section id="financeView" class="view">
+          <div class="finance-grid">
+            <article class="finance-card highlight"><span>รายรับปีนี้</span><strong>฿ 8.42M</strong><small>ค่าส่วนกลางและรายรับอื่น</small></article>
+            <article class="finance-card"><span>รายจ่ายปีนี้</span><strong>฿ 6.78M</strong><small>ซ่อมบำรุง สาธารณูปโภค และบริการ</small></article>
+            <article class="finance-card"><span>ค้างชำระ</span><strong>฿ 1.16M</strong><small>ห้องที่ยังไม่ชำระค่าส่วนกลาง</small></article>
+            <article class="finance-card"><span>เงินสำรอง</span><strong>฿ 14.35M</strong><small>กองทุนและเงินสำรองอาคาร</small></article>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3>งบการเงินโดยสรุป</h3><p>Mockup สำหรับสรุปรายรับ-รายจ่าย และสามารถต่อยอด Import/Export เอกสารบัญชีได้</p></div>
+              <div class="inline-actions"><button class="secondary-btn" type="button">Import CSV</button><button class="secondary-btn" type="button">Export Report</button></div>
+            </div>
+            <div class="finance-table">
+              <div class="finance-row head"><span>หมวด</span><span>เดือนนี้</span><span>ปีนี้</span><span>สถานะ</span></div>
+              <div class="finance-row"><span>ค่าส่วนกลาง</span><strong>฿ 742,000</strong><strong>฿ 6,810,000</strong><i class="payment-badge paid">ปกติ</i></div>
+              <div class="finance-row"><span>ค่าซ่อมบำรุง</span><strong>฿ 186,500</strong><strong>฿ 1,940,000</strong><i class="payment-badge unpaid">เฝ้าระวัง</i></div>
+              <div class="finance-row"><span>ค่าสาธารณูปโภค</span><strong>฿ 214,300</strong><strong>฿ 2,320,000</strong><i class="payment-badge paid">ปกติ</i></div>
+              <div class="finance-row"><span>ผู้รับเหมา/บริการ</span><strong>฿ 98,000</strong><strong>฿ 1,020,000</strong><i class="payment-badge paid">ปกติ</i></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="calendarView" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3>ปฏิทินนิติบุคคล</h3><p>Mockup สำหรับเชื่อมต่อ Google Calendar เพื่อดูงาน นัดหมาย และกำหนดติดตาม</p></div>
+              <div class="inline-actions"><button class="secondary-btn" id="connectGoogleCalendarBtn" type="button">เชื่อมต่อ Google Calendar</button><button class="secondary-btn" id="shareCalendarBtn" type="button">แชร์ปฏิทิน</button></div>
+            </div>
+            <div class="calendar-layout">
+              <div class="calendar-box">
+                <div class="calendar-month"><strong>June 2026</strong><span>Google Calendar Sync Ready</span></div>
+                <div class="calendar-grid">
+                  <b>จ</b><b>อ</b><b>พ</b><b>พฤ</b><b>ศ</b><b>ส</b><b>อา</b>
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
+                  <span>8</span><span>9</span><span class="has-event">10</span><span>11</span><span>12</span><span>13</span><span>14</span>
+                  <span>15</span><span class="has-event">16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span>
+                  <span>22</span><span>23</span><span>24</span><span>25</span><span class="today">26</span><span>27</span><span>28</span>
+                  <span>29</span><span>30</span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="calendar-events">
+                <h3>รายการนัดหมาย</h3>
+                <button type="button" data-job-id="JC-260625-004"><strong>ติดตามกล้องวงจรปิด B1</strong><small>27 มิ.ย. 2026 · งานซ่อมบำรุง</small></button>
+                <button type="button"><strong>ประชุมคณะกรรมการ</strong><small>30 มิ.ย. 2026 · ห้องประชุมชั้น 1</small></button>
+                <button type="button"><strong>ตัดรอบงบการเงินประจำเดือน</strong><small>30 มิ.ย. 2026 · ฝ่ายบัญชี</small></button>
+                <p class="muted-line">การเชื่อมต่อจริงสามารถใช้ Google Calendar API หรือฝัง Calendar iframe ที่ตั้งค่า public/private ตามสิทธิ์ระบบ</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="teamView" class="view">
+          <div class="team-summary">
+            <div><span data-i18n="team.totalMembers">สมาชิกทั้งหมด</span><strong>30</strong></div>
+            <div><span data-i18n="team.available">พร้อมรับงาน</span><strong class="green">18</strong></div>
+            <div><span data-i18n="team.working">กำลังปฏิบัติงาน</span><strong class="blue">9</strong></div>
+            <div><span data-i18n="team.away">ไม่อยู่</span><strong class="muted">3</strong></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3 data-i18n="team.userList">รายชื่อผู้ใช้งาน</h3><p data-i18n="team.userListSub">ผู้ดูแล เจ้าหน้าที่ และลูกบ้านในระบบ</p></div>
+              <div class="inline-actions">
+                <button class="secondary-btn" id="importEmployeesPageBtn" type="button">Import CSV</button>
+                <button class="secondary-btn" id="exportEmployeesPageBtn" type="button">Export CSV</button>
+                <button class="primary-btn" id="addUserBtn" type="button">＋ เพิ่มผู้ใช้งาน</button>
+                <input id="employeeCsvInput" type="file" accept=".csv,text/csv" hidden>
+              </div>
+            </div>
+            <div class="team-toolbar">
+              <div class="search-box"><span>⌕</span><input id="teamSearchInput" placeholder="ค้นหาชื่อ นามสกุล หรือชื่อเล่น..."></div>
+              <select id="teamDepartmentFilter" aria-label="กรองแผนก"><option value="all">ทุกแผนก</option></select>
+              <div class="view-switch" data-view-switch="team" aria-label="สลับมุมมอง" data-i18n-aria-label="list.viewSwitch">
+                <button type="button" class="active" data-view-mode="list" data-view-scope="team">☷</button>
+                <button type="button" data-view-mode="grid" data-view-scope="team">▦</button>
+              </div>
+            </div>
+            <div id="teamGrid" class="team-grid"></div>
+          </div>
+        </section>
+
+        <section id="logsView" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3 data-i18n="logs.title">Log</h3><p data-i18n="logs.subtitle">บันทึกกิจกรรมของ Admin, Co-Admin, พนักงาน และลูกบ้านตามเหตุการณ์จริง</p></div>
+            </div>
+            <div class="log-toolbar">
+              <label>จากวันที่<input id="logStartDateFilter" type="date"></label>
+              <label>ถึงวันที่<input id="logEndDateFilter" type="date"></label>
+              <div id="logDepartmentExcelFilter"></div>
+              <div id="logPersonExcelFilter"></div>
+              <button class="secondary-btn" id="clearLogFiltersBtn" type="button">ล้างตัวเลือก</button>
+            </div>
+            <div id="adminLogList" class="admin-log-list"></div>
+          </div>
+        </section>
+
+        <section id="residentsView" class="view">
+          <div class="team-summary">
+            <div><span>จำนวนห้องในระบบ</span><strong id="residentRoomCount">0</strong></div>
+            <div><span>ผู้อยู่อาศัยทั้งหมด</span><strong id="residentPeopleCount" class="green">0</strong></div>
+            <div><span>ทะเบียนรถ</span><strong id="residentCarCount" class="blue">0</strong></div>
+            <div><span>ค้างค่าส่วนกลางปีนี้</span><strong id="residentUnpaidCount" class="muted">0</strong></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3>ทะเบียนลูกบ้าน</h3><p>แสดงเลขห้อง ชื่อผู้อยู่อาศัยหลัก เบอร์ติดต่อ และทะเบียนรถ</p></div>
+              <div class="inline-actions">
+                <button class="secondary-btn" id="importResidentsBtn" type="button">Import CSV</button>
+                <button class="secondary-btn" id="exportResidentsBtn" type="button">Export CSV</button>
+                <button class="primary-btn" id="addResidentRoomBtn" type="button">＋ เพิ่มเลขห้อง</button>
+                <input id="residentCsvInput" type="file" accept=".csv,text/csv" hidden>
+              </div>
+            </div>
+            <div class="team-toolbar">
+              <div class="search-box"><span>⌕</span><input id="residentSearchInput" placeholder="ค้นหาเลขห้อง ชื่อ เบอร์ หรือทะเบียนรถ..."></div>
+              <select id="residentBuildingFilter" aria-label="กรองตึก"><option value="all">ทุกตึก</option></select>
+              <div class="view-switch" data-view-switch="residents" aria-label="สลับมุมมอง">
+                <button type="button" class="active" data-view-mode="list" data-view-scope="residents">☷</button>
+                <button type="button" data-view-mode="grid" data-view-scope="residents">▦</button>
+              </div>
+            </div>
+            <div class="resident-table">
+              <div class="resident-row resident-head"><span>เลขห้อง</span><span>ตึก</span><span>ผู้อยู่อาศัยหลัก</span><span>เบอร์ติดต่อ</span><span>ทะเบียนรถ</span><span>ค่าส่วนกลาง</span></div>
+              <div id="residentRoomList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="staffLogsView" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3>Staff Log</h3><p>บันทึกกิจกรรมทั้งหมดของทีมงานที่ไม่ใช่ Admin/Co-Admin</p></div>
+            </div>
+            <div id="staffLogList" class="admin-log-list"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <nav class="mobile-bottom-nav" aria-label="เมนูสำหรับโทรศัพท์" data-i18n-aria-label="nav.mobileMenu">
+      <button class="mobile-nav-item active" data-view="dashboard"><span>▦</span><small data-i18n="nav.dashboard">ภาพรวม</small></button>
+      <button class="mobile-nav-item" data-view="commonWork"><span>▧</span><small data-i18n="nav.commonWorkShort">ส่วนกลาง</small></button>
+      <button class="mobile-nav-item resident-work-only" data-view="residentWork"><span>▨</span><small data-i18n="nav.residentWorkShort">ลูกบ้าน</small></button>
+      <button class="mobile-nav-item" data-view="finance"><span>฿</span><small data-i18n="nav.financeShort">งบ</small></button>
+      <button class="mobile-nav-item" data-view="calendar"><span>◴</span><small data-i18n="nav.calendarShort">ปฏิทิน</small></button>
+      <button class="mobile-nav-item" data-view="pool"><span>◎</span><small data-i18n="nav.poolShort">G-Form</small><b id="mobilePoolBadge">0</b></button>
+      <button class="mobile-nav-item" data-view="googleForms"><span>G</span><small data-i18n="nav.googleFormsShort">Forms</small></button>
+      <button class="mobile-nav-item" data-view="myjobs"><span>✓</span><small data-i18n="nav.myJobsShort">งานฉัน</small></button>
+      <button class="mobile-nav-item" data-view="staffJobs"><span>◫</span><small data-i18n="nav.staffJobsShort">ทีมงาน</small></button>
+      <button class="mobile-nav-item" data-view="roomjobs"><span>⌂</span><small data-i18n="nav.roomJobsShort">ห้องฉัน</small></button>
+      <button class="mobile-nav-item manage-team-only" data-view="team"><span>♙</span><small data-i18n="nav.teamShort">พนักงาน</small></button>
+      <button class="mobile-nav-item manage-team-only" data-view="residents"><span>▤</span><small data-i18n="nav.residentsShort">ลูกบ้าน</small></button>
+      <button class="mobile-nav-item manage-team-only" data-view="organization"><span>◎</span><small data-i18n="nav.organizationShort">Org</small></button>
+      <button class="mobile-nav-item manage-team-only" data-view="backhouse"><span>▣</span><small data-i18n="nav.backhouseShort">ประกาศ</small></button>
+      <button class="mobile-nav-item manage-permissions-only" data-view="permissions"><span>⚙</span><small data-i18n="nav.permissionsShort">สิทธิ์</small></button>
+      <button class="mobile-nav-item manage-team-only" data-view="logs"><span>☰</span><small data-i18n="nav.logsShort">Log</small></button>
+    </nav>
+    <button class="mobile-create-fab admin-only" id="mobileCreateJobBtn" aria-label="สร้างงานใหม่" data-i18n-aria-label="common.createJob">＋</button>
+  </div>
+
+  <div id="jobModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <div><span class="ticket-number" id="modalTicket">JC-0000</span><h2 id="modalTitle" data-i18n="modal.jobDetail">รายละเอียดงาน</h2></div>
+        <button class="icon-btn" data-close-modal aria-label="ปิด" data-i18n-aria-label="common.close">×</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="createModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="createTitle">
+    <div class="modal form-modal">
+      <div class="modal-header">
+        <div><span class="eyebrow dark" data-i18n="create.eyebrow">NEW WORK ORDER</span><h2 id="createTitle" data-i18n="common.createJob">สร้างงานใหม่</h2></div>
+        <button class="icon-btn" data-close-create aria-label="ปิด" data-i18n-aria-label="common.close">×</button>
+      </div>
+      <form id="createJobForm" class="create-form">
+        <div class="form-row">
+          <label>วันที่งาน<input name="jobDate" type="date" required></label>
+          <label>เวลาเริ่มงาน<input name="startTime" type="time"></label>
+        </div>
+        <div class="form-row">
+          <label>เวลาสิ้นสุด<input name="endTime" type="time"></label>
+          <label><span data-i18n="create.assigneeLabel">ผู้ได้รับมอบหมาย</span><select name="assignee" id="assigneeSelect"></select></label>
+        </div>
+        <div class="form-row">
+          <label>เลขห้อง<input name="roomNo" placeholder="เช่น A-1204" required></label>
+          <label>ตึก<input name="building" placeholder="เช่น A"></label>
+        </div>
+        <div class="form-row">
+          <label>ชั้น<input name="floor" placeholder="เช่น 12"></label>
+          <label><span data-i18n="create.categoryLabel">ประเภท</span><select name="category" id="createCategory"></select></label>
+        </div>
+        <div class="form-row">
+          <label>ชื่อผู้ติดต่อ<input name="contactName" required></label>
+          <label>เบอร์ผู้ติดต่อ<input name="contactPhone" inputmode="tel" required></label>
+        </div>
+        <div class="form-row">
+          <label><span data-i18n="create.priorityLabel">ระดับความเร่งด่วน</span><select name="priority" id="prioritySelect"><option value="normal" data-i18n="priority.normal">ปกติ</option><option value="high" data-i18n="priority.high">เร่งด่วน</option><option value="urgent" data-i18n="priority.urgent">ฉุกเฉิน</option></select></label>
+          <div class="photo-choice-wrap">
+            <span class="photo-choice-title">รูปภาพประกอบ สูงสุด 3 รูป</span>
+            <div class="photo-choice">
+              <label class="secondary-btn">📷 ถ่ายรูป<input name="initialAttachmentsCamera" type="file" accept="image/*" capture="environment" multiple hidden></label>
+              <label class="secondary-btn">🖼 แนบรูป<input name="initialAttachmentsGallery" type="file" accept="image/*" multiple hidden></label>
+            </div>
+            <small>ระบบจะประทับชื่อผู้ใช้งานและเวลาแนบลงบนรูปอัตโนมัติ</small>
+          </div>
+        </div>
+        <div class="form-row full">
+          <label>เหตุที่เกิด / รายละเอียดงาน<textarea name="issueDescription" rows="4" placeholder="อธิบายเหตุที่เกิดหรือสิ่งที่ต้องดำเนินการ" required></textarea></label>
+        </div>
+        <div class="form-row full">
+          <label>หมายเหตุ<textarea name="note" rows="2" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"></textarea></label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="secondary-btn" data-close-create data-i18n="common.cancel">ยกเลิก</button>
+          <button type="submit" class="primary-btn" data-i18n="common.create">สร้างงาน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="userModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+    <div class="modal form-modal">
+      <div class="modal-header">
+        <div><span class="eyebrow dark">TEAM MEMBER</span><h2 id="userModalTitle">เพิ่มผู้ใช้งาน</h2></div>
+        <button class="icon-btn" data-close-user aria-label="ปิด">×</button>
+      </div>
+      <form id="userForm" class="create-form">
+        <input type="hidden" name="id">
+        <div class="form-row">
+          <label>ชื่อ<input name="firstName" required></label>
+          <label>นามสกุล<input name="lastName" required></label>
+        </div>
+        <div class="form-row">
+          <label>ชื่อเล่น<input name="nickName"></label>
+          <label>ตำแหน่ง<input name="position"></label>
+        </div>
+        <div class="form-row">
+          <label>แผนก<select name="department" id="userDepartmentSelect"></select></label>
+          <label>เลขห้อง / รหัสพนักงาน<input name="room" placeholder="เช่น STAFF-07 หรือ A-1204" required></label>
+        </div>
+        <div class="form-row full">
+          <div class="photo-choice-wrap">
+            <span class="photo-choice-title">รูปโปรไฟล์</span>
+            <div class="photo-choice">
+              <label class="secondary-btn">📷 ถ่ายรูป<input name="profileImageCamera" type="file" accept="image/*" capture="user" hidden></label>
+              <label class="secondary-btn">🖼 แนบรูป<input name="profileImageGallery" type="file" accept="image/*" hidden></label>
+            </div>
+            <small>ระบบจะประทับชื่อผู้ใช้งานและเวลาแนบลงบนรูปอัตโนมัติ</small>
+          </div>
+        </div>
+        <div class="team-permission-box">
+          <label><input type="checkbox" name="assignL1"> มอบหมายงาน L1</label>
+          <label><input type="checkbox" name="assignL2"> มอบหมายงาน L2</label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="secondary-btn" data-close-user>ยกเลิก</button>
+          <button type="submit" class="primary-btn">บันทึกผู้ใช้งาน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="passwordModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle">
+    <div class="modal form-modal">
+      <div class="modal-header">
+        <div><span class="eyebrow dark">ACCOUNT</span><h2 id="passwordModalTitle">เปลี่ยนรหัสผ่าน</h2></div>
+        <button class="icon-btn" data-close-password aria-label="ปิด">×</button>
+      </div>
+      <form id="passwordForm" class="create-form">
+        <input type="hidden" name="userId">
+        <div class="form-row full">
+          <label>รหัสผ่านใหม่<input name="password" type="text" minlength="4" required></label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="secondary-btn" data-close-password>ยกเลิก</button>
+          <button type="submit" class="primary-btn">บันทึกรหัสผ่าน</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="profileModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+    <div class="modal small">
+      <div class="modal-head">
+        <div><span class="eyebrow dark">PROFILE</span><h2 id="profileModalTitle">แก้ไขโปรไฟล์</h2></div>
+        <button class="icon-btn" data-close-profile aria-label="ปิด">×</button>
+      </div>
+      <form id="profileForm" class="create-form">
+        <input type="hidden" name="userId">
+        <div class="form-row">
+          <label>ชื่อ<input name="firstName" required></label>
+          <label>นามสกุล<input name="lastName"></label>
+        </div>
+        <div class="form-row">
+          <label>ชื่อเล่น<input name="nickName"></label>
+          <label>ตำแหน่ง<input name="position"></label>
+        </div>
+        <div class="form-actions">
+          <button class="secondary-btn" type="button" data-close-profile>ยกเลิก</button>
+          <button class="primary-btn" type="submit">บันทึกโปรไฟล์</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="residentModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="residentModalTitle">
+    <div class="modal wide-modal">
+      <div class="modal-header">
+        <div><span class="ticket-number">RESIDENT ROOM</span><h2 id="residentModalTitle">รายละเอียดลูกบ้าน</h2></div>
+        <button class="icon-btn" data-close-resident aria-label="ปิด">×</button>
+      </div>
+      <div id="residentModalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js?v=20260709-compact-profile-v5"></script>
+  <script src="js/security.js?v=20260710-stage0"></script>
+  <script src="supabase-client.js?v=20260709-compact-profile-v5"></script>
+  <script src="app.js?v=20260709-compact-profile-v5"></script>
+  <script src="profiles.js?v=20260709-compact-profile-v5"></script>
+</body>
+</html>
