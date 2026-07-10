@@ -9,8 +9,9 @@
 --
 -- What this migration does:
 --   1. Provenance/workflow columns: jobs.legacy_id, jobs.import_batch_id,
---      jobs.raw, jobs.completed_at, job_timeline.imported; unique
---      (source, legacy_id); partial index on open jobs.
+--      jobs.raw (boolean triage flag), jobs.completed_at,
+--      job_timeline.imported; unique (source, legacy_id); partial index on
+--      the raw-intake triage pool (raw = true and status = 'open').
 --   2. Privilege boundary: revoke direct anon/authenticated writes on all
 --      job-domain tables; job_close_pins and google_form_submissions become
 --      unreachable by clients entirely.
@@ -35,7 +36,7 @@
 alter table public.jobs
   add column if not exists legacy_id text,
   add column if not exists import_batch_id uuid,
-  add column if not exists raw jsonb,
+  add column if not exists raw boolean not null default false,
   add column if not exists completed_at timestamptz;
 
 comment on column public.jobs.legacy_id is
@@ -43,7 +44,7 @@ comment on column public.jobs.legacy_id is
 comment on column public.jobs.import_batch_id is
   'Groups one import_legacy_job run. Null for native jobs.';
 comment on column public.jobs.raw is
-  'Original untrusted source payload (Google Form / legacy import), preserved verbatim for provenance. Never rendered directly.';
+  'Triage flag: true = untriaged external-intake job (e.g. GoogleForm) awaiting staff classification; false = created normally or already classified. Never a payload — the original untrusted submission lives in google_form_submissions.payload.';
 comment on column public.jobs.completed_at is
   'Server-side completion timestamp set only by the Stage 2 workflow RPCs.';
 
@@ -56,10 +57,12 @@ create index if not exists idx_jobs_import_batch
   on public.jobs (import_batch_id)
   where import_batch_id is not null;
 
--- Common listing of open work without scanning closed history.
-create index if not exists idx_jobs_open
+-- Staff raw-intake triage pool (source=GoogleForm intake): open jobs still
+-- flagged raw=true, listed newest first. Replaces the earlier general
+-- idx_jobs_open, for which no separately documented need exists.
+create index if not exists idx_jobs_raw_open
   on public.jobs (created_at desc)
-  where status = 'open';
+  where raw = true and status = 'open';
 
 alter table public.job_timeline
   add column if not exists imported boolean not null default false;
@@ -133,29 +136,31 @@ security definer
 set search_path = public
 as $$
   -- payload is merged first so every authoritative relational column on the
-  -- right ALWAYS overrides any stale copy of the same key inside payload.
-  select j.payload || jsonb_strip_nulls(jsonb_build_object(
+  -- right ALWAYS overrides any stale copy of the same key inside payload —
+  -- including when the relational value is NULL (a relational NULL must
+  -- remove the authority of a stale payload value, so nulls are NOT stripped).
+  select j.payload || jsonb_build_object(
+           'id',             j.id,
+           'source',         j.source,
            'roomId',         j.room_id,
            'reportedBy',     j.reported_by,
            'assignedBy',     j.assigned_by,
            'assignee',       j.assignee_id,
+           'status',         j.status,
+           'subStatus',      j.sub_status,
            'mainCategory',   j.main_category,
            'category',       j.category,
            'priority',       j.priority,
            'jobDate',        j.job_date,
            'dueDate',        j.due_date,
            'nextUpdateDate', j.next_update_date,
-           'completedAt',    j.completed_at,
+           'sharePublic',    j.share_public,
+           'raw',            j.raw,
            'legacyId',       j.legacy_id,
-           'importBatchId',  j.import_batch_id
-         )) || jsonb_build_object(
-           'id',          j.id,
-           'source',      j.source,
-           'status',      j.status,
-           'subStatus',   j.sub_status,
-           'sharePublic', j.share_public,
-           'createdAt',   j.created_at,
-           'updatedAt',   j.updated_at
+           'importBatchId',  j.import_batch_id,
+           'completedAt',    j.completed_at,
+           'createdAt',      j.created_at,
+           'updatedAt',      j.updated_at
          )
   from public.jobs j
   where public.current_app_user_id() is not null

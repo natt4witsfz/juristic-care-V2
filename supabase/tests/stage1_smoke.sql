@@ -10,7 +10,8 @@
 --
 -- Read-only: only DO-block assertions; writes nothing. Every failed
 -- assertion raises, so a clean run (ending with the final notice) means PASS.
--- NOT yet executed against any database as of Stage 1 (no staging project).
+-- Status: a staging project exists, but no migration has been applied to it
+-- yet, and this smoke test has not yet been run against PostgreSQL.
 -- ============================================================================
 
 -- 1. Provenance schema additions ---------------------------------------------
@@ -33,8 +34,30 @@ begin
   end if;
   if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'raw' and data_type = 'boolean') then
+    raise exception 'FAIL: jobs.raw is not boolean (must be a triage flag, not a payload)';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'raw' and is_nullable = 'NO') then
+    raise exception 'FAIL: jobs.raw is nullable (must be NOT NULL)';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'raw'
+                   and column_default ilike '%false%') then
+    raise exception 'FAIL: jobs.raw default is not false';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
                    and column_name = 'completed_at') then
     raise exception 'FAIL: jobs.completed_at missing';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'completed_at'
+                   and data_type = 'timestamp with time zone') then
+    raise exception 'FAIL: jobs.completed_at is not timestamptz';
   end if;
   if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'job_timeline'
@@ -49,8 +72,21 @@ begin
   end if;
   if not exists (select 1 from pg_indexes
                  where schemaname = 'public' and tablename = 'jobs'
-                   and indexname = 'idx_jobs_open') then
-    raise exception 'FAIL: partial index idx_jobs_open missing';
+                   and indexname = 'idx_jobs_raw_open') then
+    raise exception 'FAIL: partial index idx_jobs_raw_open missing';
+  end if;
+  -- The predicate must scope the index to the raw-intake triage pool.
+  if not exists (select 1 from pg_indexes
+                 where schemaname = 'public' and tablename = 'jobs'
+                   and indexname = 'idx_jobs_raw_open'
+                   and indexdef ilike '%raw = true%') then
+    raise exception 'FAIL: idx_jobs_raw_open predicate lacks raw = true';
+  end if;
+  if not exists (select 1 from pg_indexes
+                 where schemaname = 'public' and tablename = 'jobs'
+                   and indexname = 'idx_jobs_raw_open'
+                   and indexdef ilike '%status = ''open''%') then
+    raise exception 'FAIL: idx_jobs_raw_open predicate lacks status = ''open''';
   end if;
   raise notice 'PASS: provenance schema additions';
 end $$;
@@ -153,6 +189,27 @@ begin
     end if;
   end loop;
   raise notice 'PASS: all Stage 1 functions are SECURITY DEFINER with fixed search_path';
+end $$;
+
+-- 4b. Read contract: relational authority is complete and never stripped ------
+do $$
+declare
+  src text;
+begin
+  select p.prosrc into src
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'list_jobs_for_current_user';
+  if src is null then
+    raise exception 'FAIL: list_jobs_for_current_user source not found';
+  end if;
+  if src not ilike '%''raw''%' then
+    raise exception 'FAIL: list_jobs_for_current_user output contract omits raw';
+  end if;
+  if src ilike '%jsonb_strip_nulls%' then
+    raise exception 'FAIL: list_jobs_for_current_user uses jsonb_strip_nulls (relational NULLs must override stale payload values)';
+  end if;
+  raise notice 'PASS: read contract includes raw and does not strip relational nulls';
 end $$;
 
 -- 5. Function grants: internal/ingestion not client-callable ------------------

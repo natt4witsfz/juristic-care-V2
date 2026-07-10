@@ -6,7 +6,14 @@
 > Signatures below are frozen; Stage 2 (workflow) and Stage 5 (import) supply
 > the enforced bodies without changing them. All functions are
 > `SECURITY DEFINER` with `set search_path = public` and explicit grants
-> (`EXECUTE` revoked from `PUBLIC` and `anon`).
+> (`EXECUTE` revoked from `PUBLIC` and `anon`). A staging project exists, but
+> the migration has **not yet been applied** to it; nothing here is
+> PostgreSQL-runtime-verified yet.
+>
+> `jobs.raw` is a **boolean triage flag** (`not null default false`), not a
+> raw JSON payload: `true` marks an untriaged external-intake job awaiting
+> staff classification; the original external source payload lives only in
+> `google_form_submissions.payload`.
 
 ## Availability matrix
 
@@ -47,14 +54,17 @@ replaced by these fail-closed stubs. There is no partial insecure write path.
 filtered by `can_read_job(job_id)` (admin, `share_public`, assignee, assigner,
 reporter, or same room).
 
-**Output:** one jsonb per job: `payload` merged with the authoritative
-relational columns, which **always win over stale payload keys** — `id`,
-`source`, `status`, `subStatus`, `sharePublic`, `createdAt`, `updatedAt`
-unconditionally, plus (when non-null) `roomId`, `reportedBy`, `assignedBy`,
-`assignee`, `mainCategory`, `category`, `priority`, `jobDate`, `dueDate`,
-`nextUpdateDate`, `completedAt`, `legacyId`, `importBatchId`. Ordered
-`created_at desc`. Never
-contains PIN material (`create_job` strips `closePin` before persisting;
+**Output:** one jsonb per job: `payload` merged with the **complete** set of
+authoritative relational columns, which **always win over stale payload keys,
+including when the relational value is NULL** (no `jsonb_strip_nulls`; a
+relational NULL overwrites and removes the authority of a stale payload
+value): `id`, `source`, `roomId`, `reportedBy`, `assignedBy`, `assignee`,
+`status`, `subStatus`, `mainCategory`, `category`, `priority`, `jobDate`,
+`dueDate`, `nextUpdateDate`, `sharePublic`, `raw`, `legacyId`,
+`importBatchId`, `completedAt`, `createdAt`, `updatedAt`. `raw` is a
+**boolean triage flag** (true = untriaged external-intake job awaiting staff
+classification), never a payload. Ordered `created_at desc`. Never contains
+PIN material (`create_job` strips `closePin` before persisting;
 `job_close_pins` is unreadable by clients).
 
 **Errors:** none — unauthenticated/unknown callers receive an empty set.
@@ -142,8 +152,11 @@ transaction it must: enforce idempotency by `external_id`; insert/identify the
 no completed/verifier/admin fields); write the initial `job_timeline` and
 `audit_logs`; return the existing job on idempotent retry; roll back
 everything on failure. The original untrusted submission is preserved
-verbatim in `jobs.raw` (never rendered directly), separate from the
-sanitized `payload`.
+verbatim in `google_form_submissions.payload` (never rendered directly),
+separate from the job's sanitized relational columns and `jobs.payload`.
+The created job is flagged `raw = true` — it enters the staff triage pool
+(`raw = true and status = 'open'`, served by `idx_jobs_raw_open`) until a
+staff member classifies it, which sets `raw = false`.
 
 **Output:** `{ job, submission_id, duplicate: boolean }`.
 **Errors:** `INVALID_INPUT`; retries with a known `external_id` succeed with

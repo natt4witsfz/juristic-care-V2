@@ -23,12 +23,17 @@ Edge Functions, UI/CSS/DOM.
 ## 2. Migration changes (`202607100001_job_domain_stage1.sql`)
 
 1. **Provenance/workflow columns (additive):** `jobs.legacy_id`,
-   `jobs.import_batch_id`, `jobs.raw` (verbatim untrusted source payload),
-   `jobs.completed_at` (server-set in Stage 2), `job_timeline.imported`;
-   partial unique index `uq_jobs_source_legacy` on `(source, legacy_id) where
-   legacy_id is not null` (idempotent re-import); supporting indexes on
-   `import_batch_id`, `job_attachments(job_id)`, and a partial `idx_jobs_open`
-   on open jobs.
+   `jobs.import_batch_id`, `jobs.raw` (**boolean triage flag**,
+   `not null default false` — `true` = untriaged external-intake job awaiting
+   staff classification; **not** a raw JSON payload, which stays in
+   `google_form_submissions.payload`), `jobs.completed_at` (server-set in
+   Stage 2), `job_timeline.imported`; partial unique index
+   `uq_jobs_source_legacy` on `(source, legacy_id) where legacy_id is not
+   null` (idempotent re-import); supporting indexes on `import_batch_id`,
+   `job_attachments(job_id)`, and the raw-intake triage-pool index
+   `idx_jobs_raw_open` on `(created_at desc) where raw = true and
+   status = 'open'` (the earlier general `idx_jobs_open` was removed; no
+   documented need for a general open-job index exists).
 2. **Privilege boundary:** INSERT/UPDATE/DELETE (and TRUNCATE/REFERENCES/
    TRIGGER) revoked from `anon` and `authenticated` on `jobs`, `job_timeline`,
    `job_attachments`; **all** privileges revoked on `job_close_pins` and
@@ -38,8 +43,11 @@ Edge Functions, UI/CSS/DOM.
    through `can_read_job(job_id)`; `job_close_pins` and
    `google_form_submissions` have no policy → deny by default.
 4. **Read RPC:** `list_jobs_for_current_user()` (live) — payload merged with
-   the full set of authoritative relational columns, which always override
-   stale payload keys; filtered by `can_read_job`, no PIN material.
+   the **complete** set of authoritative relational columns (including `raw`),
+   which always override stale payload keys **including when the relational
+   value is NULL** (no `jsonb_strip_nulls`; a relational NULL removes the
+   authority of a stale payload value); filtered by `can_read_job`, no PIN
+   material.
 5. **Write-RPC contract, fail-closed:** the v1 bodies of `create_job`,
    `assign_job`, `update_job_status`, `verify_job_completion` — which allowed
    completion without PIN/evidence/transition checks (F-04, F-09) — are
@@ -88,7 +96,7 @@ remains disabled and the existing Edge Functions were not modified or deployed.
 | `npm test` | **PASS** — 35 tests: 14 pass, 0 fail, 21 todo (pending-by-stage per Amendment 2) |
 | `git diff --check` | clean (no whitespace/conflict markers) |
 | `git status` | clean tree + 3 new untracked deliverables (this report makes 4) |
-| Structural SQL validation (node script) | dollar-quoting balanced (16 & 14 `$$` tokens), parentheses balanced (0 delta) in both SQL files |
+| Structural SQL validation (node script) | dollar-quoting balanced (16 & 16 `$$` tokens), parentheses balanced (0 delta), 0 psql meta-commands, in both SQL files |
 | `psql` / `docker` / `supabase` CLI | **not available locally** — no database execution attempted |
 
 ## 6. Tests — passing / pending / failing
@@ -98,7 +106,8 @@ remains disabled and the existing Edge Functions were not modified or deployed.
 - **Pending by stage (21 `todo`):** unchanged from Stage 0, including the four
   Stage 1 markers (direct-insert rejection, BOLA read, `list_jobs_for_current_user`
   filtering, `import_legacy_job` contract). They require a live database and
-  remain `todo` until staging exists; the corresponding assertions are encoded
+  remain `todo` until the migration is applied to the existing staging
+  project; the corresponding assertions are encoded
   in `supabase/tests/stage1_smoke.sql`, which is plain SQL (no psql
   meta-commands) so it runs unchanged in the Supabase SQL Editor or via psql.
 - **Genuinely failing: 0.**
@@ -110,8 +119,9 @@ remains disabled and the existing Edge Functions were not modified or deployed.
 - `supabase/tests/stage1_smoke.sql` has **not** been executed.
 - RLS/privilege behavior (deny direct writes, pin unreadability, BOLA) is
   therefore asserted by design + smoke script, not yet observed live.
-- No Supabase staging project exists yet (plan assumption); it must be
-  provisioned before the Stage 2 gate can be runtime-verified.
+- A Supabase staging project **exists**, but this migration has **not yet
+  been applied** to it and the smoke test has not yet been run against
+  PostgreSQL; runtime verification is still pending.
 
 ## 8. Git diff summary
 
