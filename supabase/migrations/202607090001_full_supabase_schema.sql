@@ -575,8 +575,8 @@ with check (
 
 drop policy if exists juristic_storage_update on storage.objects;
 create policy juristic_storage_update on storage.objects for update to authenticated
-using (public.is_staff_account() or owner_id = auth.uid())
-with check (public.is_staff_account() or owner_id = auth.uid());
+using (public.is_staff_account() or owner_id = (select auth.uid()::text))
+with check (public.is_staff_account() or owner_id = (select auth.uid()::text));
 
 drop policy if exists juristic_storage_delete on storage.objects;
 create policy juristic_storage_delete on storage.objects for delete to authenticated
