@@ -3,15 +3,18 @@
 -- supabase/migrations/202607100003_job_domain_stage2.sql
 --
 -- Run against a STAGING database with migrations 202607090001, 202607100001,
--- 202607100002 (pgcrypto forward fix) and 202607100003 applied
+-- 202607100002 (pgcrypto forward fix), 202607100003 and 202607100004
+-- (_clean_text chr(0) forward fix) applied
 -- (Supabase SQL Editor, or psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -f ...).
 -- Plain SQL only — no psql meta-commands.
 --
--- Sections 1–5 are read-only DO-block assertions. Section 6 is a write
+-- Sections 1–5b are read-only DO-block assertions. Section 6 is a write
 -- round-trip wrapped in BEGIN/ROLLBACK, so nothing persists.
 --
--- Status: written for the staging project that already carries Stage 1; this
--- file has not yet been executed against PostgreSQL.
+-- Status: 202607100003 is applied to staging; linked db lint then flagged
+-- _clean_text ("null character not permitted" from chr(0)), fixed forward by
+-- 202607100004 (not yet applied). This smoke test has not yet been executed
+-- against PostgreSQL.
 --
 -- NOTE: stage1_smoke.sql section 6 asserted the Stage 1 fail-closed stubs
 -- (JOB_WRITES_UNAVAILABLE / INGESTION_UNAVAILABLE). Once Stage 2 is applied
@@ -167,6 +170,43 @@ begin
     raise exception 'FAIL: empty date must normalize to NULL';
   end if;
   raise notice 'PASS: Asia/Bangkok date normalization';
+end $$;
+
+-- 5b. _clean_text sanitization (forward fix 202607100004) ---------------------
+do $$
+declare
+  src text;
+begin
+  if public._clean_text('  example  ', 20) is distinct from 'example' then
+    raise exception 'FAIL: _clean_text does not trim to ''example''';
+  end if;
+  if public._clean_text('   ', 20) is not null then
+    raise exception 'FAIL: _clean_text of whitespace-only must be NULL';
+  end if;
+  if public._clean_text(null, 20) is not null then
+    raise exception 'FAIL: _clean_text of NULL must be NULL';
+  end if;
+  begin
+    perform public._clean_text(repeat('x', 21), 20);
+    raise exception 'FAIL: _clean_text accepted an over-length value';
+  exception when others then
+    if sqlerrm not like '%INVALID_INPUT%' then
+      raise exception 'FAIL: over-length value raised unexpected error: %', sqlerrm;
+    end if;
+  end;
+  select p.prosrc into src from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = '_clean_text';
+  if src is null then
+    raise exception 'FAIL: _clean_text missing';
+  end if;
+  if src like '%chr(0)%' then
+    raise exception 'FAIL: _clean_text still constructs chr(0) (null character not permitted)';
+  end if;
+  if src like '%replace(p_value%' then
+    raise exception 'FAIL: _clean_text still contains a null-character replacement';
+  end if;
+  raise notice 'PASS: _clean_text trims, nulls empties, caps length, no chr(0)';
 end $$;
 
 -- 6. Transactional write round-trip (ROLLED BACK — persists nothing) ----------

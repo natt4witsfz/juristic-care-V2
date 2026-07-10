@@ -144,6 +144,32 @@ the Stage 1 fail-closed stubs (same signatures), drop the Stage 2 helper
 functions, and restore the v1 `get_app_bootstrap` body — a down script can be
 produced before the staging apply if required.
 
+## 7a. Post-apply addendum (2026-07-10) — _clean_text chr(0) fix
+
+- Migration `202607100003_job_domain_stage2.sql` **was applied successfully
+  to staging**.
+- The linked **db lint then failed** on `public._clean_text`:
+  `null character not permitted` (assignment to variable `v`). Root cause:
+  the installed body used `btrim(replace(p_value, chr(0), ''))`, but
+  PostgreSQL `text` can never contain the zero byte — constructing `chr(0)`
+  itself raises this error, and the replacement is unnecessary because a NUL
+  can never be present in a `text` parameter.
+- **The Stage 2 gate is NOT yet approved.**
+- The correction is a **new forward migration**,
+  `supabase/migrations/202607100004_clean_text_null_fix.sql`, redefining only
+  `_clean_text` with `v := btrim(p_value)` while preserving its signature,
+  return type, language, IMMUTABLE attribute, fixed `search_path = public`,
+  trimming, empty-string→NULL behavior, length validation and
+  `INVALID_INPUT` error behavior. A search of all migrations confirmed no
+  other currently-active function contains the defect.
+- The already-applied migration file was **not rewritten**; no migration
+  repair was used.
+- `stage2_smoke.sql` gained section 5b (trim/NULL/length/INVALID_INPUT
+  behavior plus source assertions that no `chr(0)` or null-character
+  replacement remains); its write section stays inside BEGIN/ROLLBACK. The
+  Stage 2 smoke test has **not yet been executed**; db lint is not claimed
+  fixed until `202607100004` is applied and the lint reruns clean.
+
 ## 8. Confirmation — no Supabase resource modified
 
 No migration was applied, no `supabase db push`, no smoke test executed
