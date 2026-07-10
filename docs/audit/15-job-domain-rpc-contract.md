@@ -1,14 +1,15 @@
-# 15 — Job Domain RPC Contract (Stage 1)
+# 15 — Job Domain RPC Contract (Stage 1 contract · Stage 2 enforced bodies)
 
-> Status: **contract defined, bodies fail-closed.** Established by migration
-> `supabase/migrations/202607100001_job_domain_stage1.sql` per
-> `docs/audit/14-strategy-b-rebuild-plan.md` §3 Stage 1 and Amendment 1.
-> Signatures below are frozen; Stage 2 (workflow) and Stage 5 (import) supply
-> the enforced bodies without changing them. All functions are
-> `SECURITY DEFINER` with `set search_path = public` and explicit grants
-> (`EXECUTE` revoked from `PUBLIC` and `anon`). A staging project exists, but
-> the migration has **not yet been applied** to it; nothing here is
-> PostgreSQL-runtime-verified yet.
+> Status: **contract frozen (Stage 1, applied to staging and runtime-verified
+> 2026-07-10); enforced workflow bodies implemented (Stage 2) in migration
+> `supabase/migrations/202607100002_job_domain_stage2.sql`, not yet applied
+> to staging.** Signatures are unchanged from Stage 1. Stage 5 (import)
+> supplies the remaining body. All functions are `SECURITY DEFINER` with
+> `set search_path = public` and explicit grants (`EXECUTE` revoked from
+> `PUBLIC` and `anon`); `CREATE OR REPLACE` in Stage 2 preserves the Stage 1
+> ACLs. Stage 2 behavior is asserted structurally and by
+> `supabase/tests/stage2_smoke.sql`; it is **not** claimed
+> PostgreSQL-runtime-verified until that smoke test passes on staging.
 >
 > `jobs.raw` is a **boolean triage flag** (`not null default false`), not a
 > raw JSON payload: `true` marks an untriaged external-intake job awaiting
@@ -17,20 +18,38 @@
 
 ## Availability matrix
 
-| Function | Callable by | Stage 1 behavior | Implemented in |
+| Function | Callable by | Behavior after Stage 2 | Implemented in |
 | --- | --- | --- | --- |
 | `list_jobs_for_current_user()` | authenticated, service_role | **Live** — returns permitted jobs | Stage 1 |
-| `create_job(jsonb)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
-| `assign_job(text, uuid, jsonb)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
-| `update_job_status(text, jsonb)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
-| `verify_job_completion(text)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
-| `_create_job_internal(uuid, text, jsonb)` | **nobody directly** (definer-context only; EXECUTE revoked from public, anon, authenticated **and** service_role) | Raises `INTERNAL_ONLY` | Stage 2 |
-| `ingest_google_form_submission(text, jsonb)` | service_role only | Raises `INGESTION_UNAVAILABLE` | Stage 2 (trigger enabled Stage 7) |
+| `create_job(jsonb)` | authenticated, service_role | **Enforced** WebApp intake (§2) | Stage 2 |
+| `assign_job(text, uuid, jsonb)` | authenticated, service_role | **Enforced** assignment (§3) | Stage 2 |
+| `update_job_status(text, jsonb)` | authenticated, service_role | **Enforced** transitions/PIN/evidence (§4) | Stage 2 |
+| `verify_job_completion(text)` | authenticated, service_role | **Enforced** restricted verification (§5) | Stage 2 |
+| `_create_job_internal(uuid, text, jsonb)` | **nobody directly** (definer-context only; EXECUTE revoked from public, anon, authenticated **and** service_role) | Shared normalized creation path (§6) | Stage 2 |
+| `ingest_google_form_submission(text, jsonb)` | service_role only | **Enforced** single-transaction ingestion (§7); Form trigger still disabled | Stage 2 (trigger enabled Stage 7) |
 | `import_legacy_job(uuid, jsonb, boolean)` | admin via authenticated; service_role (in-body check: `is_admin_account()` **or** `auth.role() = 'service_role'`) | Non-admin/non-service → `FORBIDDEN` (42501); authorized → `IMPORT_UNAVAILABLE` | Stage 5 |
 
 The v1 write-RPC bodies (which allowed completion without PIN, evidence or
 transition checks — findings F-04/F-09) were **removed** in Stage 1 and
-replaced by these fail-closed stubs. There is no partial insecure write path.
+replaced by fail-closed stubs; Stage 2 replaces those stubs with the enforced
+bodies below. At no point does a partial insecure write path exist.
+
+## Legal status-transition table (Stage 2, binding)
+
+Vocabulary matches the frontend exactly. Working set **W** = `received`,
+`pending_inspection`, `inspected_waiting_repair`, `repaired_follow_up`,
+`temporary_waiting_parts`.
+
+| From | Allowed to |
+| --- | --- |
+| `open` | `received` (assignment), `rejected` |
+| any status in W | any status in W (incl. same-status progress update), `completed` (PIN-gated), `rejected` |
+| `completed`, `rejected` | **nothing — terminal** |
+| any | never back to `open` |
+
+Special case: `pending_inspection` + sub-status
+`waiting_owner_or_admin_verification` → `completed` only via
+`verify_job_completion` by an authorized verifier.
 
 ## Error codes (shared vocabulary)
 
@@ -88,8 +107,12 @@ validates input server-side; generates the job id (`JC-…`) and a bcrypt-hashed
 close PIN in `job_close_pins`; normalizes dates in Asia/Bangkok; writes the
 initial `job_timeline` event and an `audit_logs` row in the same transaction.
 
-**Output:** the created job in `list_jobs_for_current_user` shape.
-**Errors:** `AUTH_REQUIRED`, `INVALID_INPUT`, `DUPLICATE_SUBMISSION`.
+**Output:** the created job in `list_jobs_for_current_user` shape, plus a
+one-time `closePin` field (the only moment the plaintext PIN is ever
+disclosed; it is stored solely as a bcrypt hash in `job_close_pins`). An
+idempotent retry (same creator + same `idempotencyKey`) returns the existing
+job with `duplicate: true` and **without** `closePin`.
+**Errors:** `AUTH_REQUIRED`, `INVALID_INPUT`.
 
 ## 3. `assign_job(p_job_id text, p_assignee_id uuid, p_extra jsonb) → jsonb` — Stage 2
 
