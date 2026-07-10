@@ -2,7 +2,10 @@
 
 > Date: 2026-07-10 · Branch: `feat/stage-1-job-domain-schema` · Baseline: Stage 0
 > commit `6b2e42d` (tag `stage-0-approved`). Per the stage-gate protocol in
-> `docs/audit/14-strategy-b-rebuild-plan.md` §7. **Hard stop — Stage 2 not started.**
+> `docs/audit/14-strategy-b-rebuild-plan.md` §7.
+> **Status: STAGE 1 GATE APPROVED — runtime-verified on staging 2026-07-10
+> (see §12). Stage 2 implementation lives on `feat/stage-2-server-workflow`
+> and remains unapplied.**
 
 ## 1. Files changed
 
@@ -187,7 +190,32 @@ made (none is installed), no Edge Function was deployed or edited, no secret
 was requested or handled, and no production or staging Supabase project was
 touched in any way. All Stage 1 output is files in this repository.
 
-## 11. Approval request
+## 12. Final runtime verification on staging (2026-07-10) — GATE APPROVED
+
+Stage 1 has been runtime-verified successfully on the staging Supabase
+project (fake data only):
+
+- Migrations `202607090001`, `202607100001` and `202607100002`
+  (pgcrypto forward fix) **applied successfully**.
+- Local and remote migration histories **match**.
+- Linked database lint **passed with no errors** (the
+  `crypt(text, text) does not exist` finding from §9a is resolved by the
+  forward migration).
+- `supabase/tests/stage1_smoke.sql` **completed successfully with no failed
+  assertions** — including the RLS/privilege boundary, the read contract
+  (raw triage flag, complete relational authority), the fail-closed write
+  stubs, and the pgcrypto schema-qualification section 7.
+- No production project or real resident data was touched.
+- `SUPABASE_ENABLED` remains **false**; Google Form ingestion remains
+  **disabled**.
+
+The declared limits in §7 are hereby closed: the Stage 1 boundary is now
+observed live, not just asserted by design. **The Stage 1 gate is approved**;
+this state is tagged `stage-1-staging-verified`. The next step is the review
+and staging dry-run of Stage 2 (`feat/stage-2-server-workflow`), which does
+not begin without explicit approval.
+
+## 11. Approval request (historical — superseded by §12)
 
 **Go/no-go:** approve applying migration `202607100001_job_domain_stage1.sql`
 to a **staging** Supabase project (with fake data only) and running
