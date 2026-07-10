@@ -2,15 +2,16 @@
 -- Stage 1 smoke test — structural assertions for
 -- supabase/migrations/202607100001_job_domain_stage1.sql
 --
--- Run with psql against a STAGING database that has both migrations applied:
---   psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/stage1_smoke.sql
+-- Run against a STAGING database that has both migrations applied, either:
+--   * Supabase SQL Editor: paste the whole file and run (plain SQL only —
+--     no psql meta-commands are used), or
+--   * psql: psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 \
+--            -f supabase/tests/stage1_smoke.sql
 --
 -- Read-only: only DO-block assertions; writes nothing. Every failed
--- assertion raises, so a clean exit (and the final notice) means PASS.
+-- assertion raises, so a clean run (ending with the final notice) means PASS.
 -- NOT yet executed against any database as of Stage 1 (no staging project).
 -- ============================================================================
-
-\set ON_ERROR_STOP on
 
 -- 1. Provenance schema additions ---------------------------------------------
 do $$
@@ -26,6 +27,16 @@ begin
     raise exception 'FAIL: jobs.import_batch_id missing';
   end if;
   if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'raw') then
+    raise exception 'FAIL: jobs.raw missing';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'jobs'
+                   and column_name = 'completed_at') then
+    raise exception 'FAIL: jobs.completed_at missing';
+  end if;
+  if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'job_timeline'
                    and column_name = 'imported') then
     raise exception 'FAIL: job_timeline.imported missing';
@@ -35,6 +46,11 @@ begin
                    and indexname = 'uq_jobs_source_legacy'
                    and indexdef ilike '%unique%') then
     raise exception 'FAIL: unique index uq_jobs_source_legacy missing';
+  end if;
+  if not exists (select 1 from pg_indexes
+                 where schemaname = 'public' and tablename = 'jobs'
+                   and indexname = 'idx_jobs_open') then
+    raise exception 'FAIL: partial index idx_jobs_open missing';
   end if;
   raise notice 'PASS: provenance schema additions';
 end $$;
@@ -145,8 +161,10 @@ begin
   if has_function_privilege('authenticated',
        'public._create_job_internal(uuid, text, jsonb)', 'EXECUTE')
      or has_function_privilege('anon',
+       'public._create_job_internal(uuid, text, jsonb)', 'EXECUTE')
+     or has_function_privilege('service_role',
        'public._create_job_internal(uuid, text, jsonb)', 'EXECUTE') then
-    raise exception 'FAIL: _create_job_internal is client-executable';
+    raise exception 'FAIL: _create_job_internal is directly executable (must be definer-context only)';
   end if;
   if has_function_privilege('authenticated',
        'public.ingest_google_form_submission(text, jsonb)', 'EXECUTE')

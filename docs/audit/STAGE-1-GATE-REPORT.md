@@ -22,10 +22,13 @@ Edge Functions, UI/CSS/DOM.
 
 ## 2. Migration changes (`202607100001_job_domain_stage1.sql`)
 
-1. **Provenance (additive):** `jobs.legacy_id`, `jobs.import_batch_id`,
-   `job_timeline.imported`; partial unique index `uq_jobs_source_legacy` on
-   `(source, legacy_id) where legacy_id is not null` (idempotent re-import);
-   supporting indexes on `import_batch_id` and `job_attachments(job_id)`.
+1. **Provenance/workflow columns (additive):** `jobs.legacy_id`,
+   `jobs.import_batch_id`, `jobs.raw` (verbatim untrusted source payload),
+   `jobs.completed_at` (server-set in Stage 2), `job_timeline.imported`;
+   partial unique index `uq_jobs_source_legacy` on `(source, legacy_id) where
+   legacy_id is not null` (idempotent re-import); supporting indexes on
+   `import_batch_id`, `job_attachments(job_id)`, and a partial `idx_jobs_open`
+   on open jobs.
 2. **Privilege boundary:** INSERT/UPDATE/DELETE (and TRUNCATE/REFERENCES/
    TRIGGER) revoked from `anon` and `authenticated` on `jobs`, `job_timeline`,
    `job_attachments`; **all** privileges revoked on `job_close_pins` and
@@ -35,14 +38,18 @@ Edge Functions, UI/CSS/DOM.
    through `can_read_job(job_id)`; `job_close_pins` and
    `google_form_submissions` have no policy → deny by default.
 4. **Read RPC:** `list_jobs_for_current_user()` (live) — payload merged with
-   authoritative columns, filtered by `can_read_job`, no PIN material.
+   the full set of authoritative relational columns, which always override
+   stale payload keys; filtered by `can_read_job`, no PIN material.
 5. **Write-RPC contract, fail-closed:** the v1 bodies of `create_job`,
    `assign_job`, `update_job_status`, `verify_job_completion` — which allowed
    completion without PIN/evidence/transition checks (F-04, F-09) — are
    replaced by stubs raising `JOB_WRITES_UNAVAILABLE`. New contract stubs:
-   `_create_job_internal` (`INTERNAL_ONLY`, no client EXECUTE),
-   `ingest_google_form_submission` (`INGESTION_UNAVAILABLE`, service-role
-   only, Amendment 1), `import_legacy_job` (`FORBIDDEN` for non-admins, then
+   `_create_job_internal` (`INTERNAL_ONLY`; EXECUTE revoked from **all**
+   roles including service_role — reachable only from the definer context of
+   its two entry points), `ingest_google_form_submission`
+   (`INGESTION_UNAVAILABLE`, service-role only, Amendment 1),
+   `import_legacy_job` (authorized for admin accounts **or** service-role
+   callers via `auth.role()`; others get `FORBIDDEN`, authorized callers get
    `IMPORT_UNAVAILABLE`; Stage 5, Amendment 3). **No partial insecure write
    path exists.**
 6. All functions are `SECURITY DEFINER` with `set search_path = public`;
@@ -92,7 +99,8 @@ remains disabled and the existing Edge Functions were not modified or deployed.
   Stage 1 markers (direct-insert rejection, BOLA read, `list_jobs_for_current_user`
   filtering, `import_legacy_job` contract). They require a live database and
   remain `todo` until staging exists; the corresponding assertions are encoded
-  in `supabase/tests/stage1_smoke.sql` ready to run there.
+  in `supabase/tests/stage1_smoke.sql`, which is plain SQL (no psql
+  meta-commands) so it runs unchanged in the Supabase SQL Editor or via psql.
 - **Genuinely failing: 0.**
 
 ## 7. Not runtime-verified (declared limits)

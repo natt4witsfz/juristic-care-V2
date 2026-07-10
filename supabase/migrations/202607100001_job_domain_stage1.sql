@@ -8,8 +8,9 @@
 -- save_client_snapshot are intentionally NOT touched (Stage 2 / Stage 6).
 --
 -- What this migration does:
---   1. Provenance columns: jobs.legacy_id, jobs.import_batch_id,
---      job_timeline.imported; unique (source, legacy_id).
+--   1. Provenance/workflow columns: jobs.legacy_id, jobs.import_batch_id,
+--      jobs.raw, jobs.completed_at, job_timeline.imported; unique
+--      (source, legacy_id); partial index on open jobs.
 --   2. Privilege boundary: revoke direct anon/authenticated writes on all
 --      job-domain tables; job_close_pins and google_form_submissions become
 --      unreachable by clients entirely.
@@ -33,12 +34,18 @@
 
 alter table public.jobs
   add column if not exists legacy_id text,
-  add column if not exists import_batch_id uuid;
+  add column if not exists import_batch_id uuid,
+  add column if not exists raw jsonb,
+  add column if not exists completed_at timestamptz;
 
 comment on column public.jobs.legacy_id is
   'Original identifier of a job imported from a legacy store. Null for native jobs.';
 comment on column public.jobs.import_batch_id is
   'Groups one import_legacy_job run. Null for native jobs.';
+comment on column public.jobs.raw is
+  'Original untrusted source payload (Google Form / legacy import), preserved verbatim for provenance. Never rendered directly.';
+comment on column public.jobs.completed_at is
+  'Server-side completion timestamp set only by the Stage 2 workflow RPCs.';
 
 -- Re-running an import must never duplicate a job (plan §4).
 create unique index if not exists uq_jobs_source_legacy
@@ -48,6 +55,11 @@ create unique index if not exists uq_jobs_source_legacy
 create index if not exists idx_jobs_import_batch
   on public.jobs (import_batch_id)
   where import_batch_id is not null;
+
+-- Common listing of open work without scanning closed history.
+create index if not exists idx_jobs_open
+  on public.jobs (created_at desc)
+  where status = 'open';
 
 alter table public.job_timeline
   add column if not exists imported boolean not null default false;
@@ -120,14 +132,30 @@ stable
 security definer
 set search_path = public
 as $$
-  select j.payload || jsonb_build_object(
-           'id',         j.id,
-           'source',     j.source,
-           'status',     j.status,
-           'subStatus',  j.sub_status,
-           'legacyId',   j.legacy_id,
-           'createdAt',  j.created_at,
-           'updatedAt',  j.updated_at
+  -- payload is merged first so every authoritative relational column on the
+  -- right ALWAYS overrides any stale copy of the same key inside payload.
+  select j.payload || jsonb_strip_nulls(jsonb_build_object(
+           'roomId',         j.room_id,
+           'reportedBy',     j.reported_by,
+           'assignedBy',     j.assigned_by,
+           'assignee',       j.assignee_id,
+           'mainCategory',   j.main_category,
+           'category',       j.category,
+           'priority',       j.priority,
+           'jobDate',        j.job_date,
+           'dueDate',        j.due_date,
+           'nextUpdateDate', j.next_update_date,
+           'completedAt',    j.completed_at,
+           'legacyId',       j.legacy_id,
+           'importBatchId',  j.import_batch_id
+         )) || jsonb_build_object(
+           'id',          j.id,
+           'source',      j.source,
+           'status',      j.status,
+           'subStatus',   j.sub_status,
+           'sharePublic', j.share_public,
+           'createdAt',   j.created_at,
+           'updatedAt',   j.updated_at
          )
   from public.jobs j
   where public.current_app_user_id() is not null
@@ -243,7 +271,9 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_admin_account() then
+  -- Contract: admin app accounts or the service role. Service-role callers
+  -- have no auth.uid(), so is_admin_account() alone would wrongly reject them.
+  if not (public.is_admin_account() or coalesce(auth.role(), '') = 'service_role') then
     raise exception 'FORBIDDEN'
       using detail = 'import_legacy_job is restricted to admin or service-role callers.',
             errcode = '42501';
@@ -273,9 +303,11 @@ grant execute on function public.update_job_status(text, jsonb) to authenticated
 revoke all on function public.verify_job_completion(text) from public, anon;
 grant execute on function public.verify_job_completion(text) to authenticated, service_role;
 
--- Internal: nobody but the definer context may call it.
-revoke all on function public._create_job_internal(uuid, text, jsonb) from public, anon, authenticated;
-grant execute on function public._create_job_internal(uuid, text, jsonb) to service_role;
+-- Internal: nobody may call it directly — not even service_role. It is
+-- reachable only from inside the definer context of create_job and
+-- ingest_google_form_submission (Stage 2 bodies).
+revoke all on function public._create_job_internal(uuid, text, jsonb)
+  from public, anon, authenticated, service_role;
 
 -- Ingestion: service role only (called by the Edge Function).
 revoke all on function public.ingest_google_form_submission(text, jsonb) from public, anon, authenticated;

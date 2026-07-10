@@ -17,9 +17,9 @@
 | `assign_job(text, uuid, jsonb)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
 | `update_job_status(text, jsonb)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
 | `verify_job_completion(text)` | authenticated, service_role | Raises `JOB_WRITES_UNAVAILABLE` | Stage 2 |
-| `_create_job_internal(uuid, text, jsonb)` | service_role only (internal) | Raises `INTERNAL_ONLY` | Stage 2 |
+| `_create_job_internal(uuid, text, jsonb)` | **nobody directly** (definer-context only; EXECUTE revoked from public, anon, authenticated **and** service_role) | Raises `INTERNAL_ONLY` | Stage 2 |
 | `ingest_google_form_submission(text, jsonb)` | service_role only | Raises `INGESTION_UNAVAILABLE` | Stage 2 (trigger enabled Stage 7) |
-| `import_legacy_job(uuid, jsonb, boolean)` | admin via authenticated; service_role | Non-admin → `FORBIDDEN` (42501); admin → `IMPORT_UNAVAILABLE` | Stage 5 |
+| `import_legacy_job(uuid, jsonb, boolean)` | admin via authenticated; service_role (in-body check: `is_admin_account()` **or** `auth.role() = 'service_role'`) | Non-admin/non-service → `FORBIDDEN` (42501); authorized → `IMPORT_UNAVAILABLE` | Stage 5 |
 
 The v1 write-RPC bodies (which allowed completion without PIN, evidence or
 transition checks — findings F-04/F-09) were **removed** in Stage 1 and
@@ -47,9 +47,13 @@ replaced by these fail-closed stubs. There is no partial insecure write path.
 filtered by `can_read_job(job_id)` (admin, `share_public`, assignee, assigner,
 reporter, or same room).
 
-**Output:** one jsonb per job: `payload` merged with authoritative columns
-`id`, `source`, `status`, `subStatus`, `legacyId`, `createdAt`, `updatedAt`
-(columns win over stale payload keys). Ordered `created_at desc`. Never
+**Output:** one jsonb per job: `payload` merged with the authoritative
+relational columns, which **always win over stale payload keys** — `id`,
+`source`, `status`, `subStatus`, `sharePublic`, `createdAt`, `updatedAt`
+unconditionally, plus (when non-null) `roomId`, `reportedBy`, `assignedBy`,
+`assignee`, `mainCategory`, `category`, `priority`, `jobDate`, `dueDate`,
+`nextUpdateDate`, `completedAt`, `legacyId`, `importBatchId`. Ordered
+`created_at desc`. Never
 contains PIN material (`create_job` strips `closePin` before persisting;
 `job_close_pins` is unreadable by clients).
 
@@ -124,8 +128,9 @@ room's owner — **not** the assignee.
 Shared normalized creation path used by `create_job` and
 `ingest_google_form_submission` so validation, sanitization, id generation,
 PIN hashing, timeline and audit live in exactly one place (Amendment 1).
-`EXECUTE` is revoked from all client roles; it is reachable only from the
-definer context of the two public entry points (and service_role).
+`EXECUTE` is revoked from **all** roles — public, anon, authenticated and
+service_role; it is reachable only from inside the definer context of the two
+public entry points.
 
 ## 7. `ingest_google_form_submission(p_external_id text, p_payload jsonb) → jsonb` — Stage 2, service-role only
 
@@ -136,7 +141,9 @@ transaction it must: enforce idempotency by `external_id`; insert/identify the
 `_create_job_internal` (source `'GoogleForm'`, no actor identity, no assignee,
 no completed/verifier/admin fields); write the initial `job_timeline` and
 `audit_logs`; return the existing job on idempotent retry; roll back
-everything on failure.
+everything on failure. The original untrusted submission is preserved
+verbatim in `jobs.raw` (never rendered directly), separate from the
+sanitized `payload`.
 
 **Output:** `{ job, submission_id, duplicate: boolean }`.
 **Errors:** `INVALID_INPUT`; retries with a known `external_id` succeed with
