@@ -310,7 +310,7 @@ begin
   loop
     v_job_id := v_prefix || '-'
       || to_char(now() at time zone 'Asia/Bangkok', 'YYMMDD') || '-'
-      || upper(encode(gen_random_bytes(3), 'hex'));
+      || upper(encode(extensions.gen_random_bytes(3), 'hex'));
     exit when not exists (select 1 from public.jobs where id = v_job_id);
     v_attempt := v_attempt + 1;
     if v_attempt > 5 then
@@ -346,9 +346,9 @@ begin
 
   -- Close PIN: generated server-side (pgcrypto randomness), bcrypt-hashed;
   -- plaintext never persisted.
-  v_pin := lpad((abs((('x' || encode(gen_random_bytes(4), 'hex'))::bit(32)::int)::bigint) % 10000)::text, 4, '0');
+  v_pin := lpad((abs((('x' || encode(extensions.gen_random_bytes(4), 'hex'))::bit(32)::int)::bigint) % 10000)::text, 4, '0');
   insert into public.job_close_pins (job_id, pin_hash)
-  values (v_job_id, crypt(v_pin, gen_salt('bf')));
+  values (v_job_id, extensions.crypt(v_pin, extensions.gen_salt('bf')));
 
   insert into public.job_timeline (job_id, actor_id, action, from_status, to_status, message, data)
   values (v_job_id, p_actor_id, 'created', null, v_job.status,
@@ -566,7 +566,7 @@ begin
     else
       v_pin := public._clean_text(p_payload->>'pin', 20);
       select pin_hash into v_pin_hash from public.job_close_pins where job_id = p_job_id;
-      if v_pin is null or v_pin_hash is null or crypt(v_pin, v_pin_hash) <> v_pin_hash then
+      if v_pin is null or v_pin_hash is null or extensions.crypt(v_pin, v_pin_hash) <> v_pin_hash then
         raise exception 'PIN_INVALID'
           using detail = 'Completion PIN does not match', errcode = 'P0001';
       end if;

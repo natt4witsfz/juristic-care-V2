@@ -1,8 +1,9 @@
 -- ============================================================================
 -- Stage 2 smoke test — structural + behavioral assertions for
--- supabase/migrations/202607100002_job_domain_stage2.sql
+-- supabase/migrations/202607100003_job_domain_stage2.sql
 --
--- Run against a STAGING database with migrations ...0001 and ...0002 applied
+-- Run against a STAGING database with migrations 202607090001, 202607100001,
+-- 202607100002 (pgcrypto forward fix) and 202607100003 applied
 -- (Supabase SQL Editor, or psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -f ...).
 -- Plain SQL only — no psql meta-commands.
 --

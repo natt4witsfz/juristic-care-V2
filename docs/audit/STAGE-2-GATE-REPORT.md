@@ -1,18 +1,20 @@
 # STAGE 2 GATE REPORT — Server-enforced job workflow
 
-> Date: 2026-07-10 · Branch: `feat/stage-1-job-domain-schema` · Baseline:
-> Stage 1 commit `61e6a59`, applied to staging and runtime-verified
-> (db push passed, migration history in sync, db lint clean,
-> `stage1_smoke.sql` all assertions passed). Per the stage-gate protocol in
+> Date: 2026-07-10 · Branch: `feat/stage-2-server-workflow` · Baseline:
+> Stage 1 closed and tagged `stage-1-staging-verified` (commit `be84178`;
+> migrations `202607090001`, `202607100001`, `202607100002` applied to
+> staging, histories in sync, db lint clean, `stage1_smoke.sql` all
+> assertions passed), with the three Stage 1 fix commits cherry-picked onto
+> this branch. Per the stage-gate protocol in
 > `docs/audit/14-strategy-b-rebuild-plan.md` §7.
 > **Hard stop — Stage 3 not started. Frontend untouched. Form trigger
-> disabled. This migration has NOT been applied to staging.**
+> disabled. The Stage 2 migration has NOT been applied to staging.**
 
 ## 1. Files changed
 
 | File | Change |
 | --- | --- |
-| `supabase/migrations/202607100002_job_domain_stage2.sql` | **New** — Stage 2 migration (enforced RPC bodies, workflow helpers, bootstrap fix) |
+| `supabase/migrations/202607100003_job_domain_stage2.sql` | **New** — Stage 2 migration (enforced RPC bodies, workflow helpers, bootstrap fix). Renamed from version `202607100002` because that version number is taken by the applied Stage 1 pgcrypto forward fix; exactly one migration exists per version. |
 | `supabase/tests/stage2_smoke.sql` | **New** — structural + rolled-back behavioral assertions for staging |
 | `docs/audit/15-job-domain-rpc-contract.md` | Updated — availability matrix now reflects enforced Stage 2 bodies; legal-transition table documented; one-time `closePin` disclosure documented |
 | `docs/audit/STAGE-2-GATE-REPORT.md` | **New** — this report |
@@ -24,7 +26,7 @@ Functions, `save_client_snapshot`, `import_legacy_job` (still the Stage 1
 fail-closed stub until Stage 5), `list_jobs_for_current_user` (unchanged from
 Stage 1), Stage 0/1 migrations and `stage1_smoke.sql`.
 
-## 2. Migration changes (`202607100002_job_domain_stage2.sql`)
+## 2. Migration changes (`202607100003_job_domain_stage2.sql`)
 
 All Stage 1 signatures, grants and the privilege/RLS boundary are unchanged
 (`CREATE OR REPLACE` preserves ACLs). What the enforced bodies add:
@@ -125,7 +127,7 @@ smoke remain valid and should still pass.
 
 ## 6. Not runtime-verified (declared limits)
 
-- Migration `202607100002` has **not** been applied to any database; no
+- Migration `202607100003` has **not** been applied to any database; no
   PostgreSQL parsed or executed it. Validation is structural only.
 - `stage2_smoke.sql` has **not** been executed.
 - PIN/bcrypt behavior, transition rejection, evidence enforcement, ingestion
@@ -153,9 +155,9 @@ Form ingestion remains disabled.
 ## 9. Approval request
 
 **Go/no-go:**
-1. Approve one commit of the Stage 2 deliverables to
-   `feat/stage-1-job-domain-schema` (or a new `feat/stage-2` branch on top).
-2. Approve applying `202607100002_job_domain_stage2.sql` to the **staging**
+1. Approve one commit of the Stage 2 review-preparation changes to
+   `feat/stage-2-server-workflow`.
+2. Approve applying `202607100003_job_domain_stage2.sql` to the **staging**
    project and running `supabase/tests/stage2_smoke.sql` there (its write
    section is wrapped in BEGIN/ROLLBACK and persists nothing).
 

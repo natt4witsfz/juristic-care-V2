@@ -2,7 +2,7 @@
 
 > Status: **contract frozen (Stage 1, applied to staging and runtime-verified
 > 2026-07-10); enforced workflow bodies implemented (Stage 2) in migration
-> `supabase/migrations/202607100002_job_domain_stage2.sql`, not yet applied
+> `supabase/migrations/202607100003_job_domain_stage2.sql`, not yet applied
 > to staging.** Signatures are unchanged from Stage 1. Stage 5 (import)
 > supplies the remaining body. All functions are `SECURITY DEFINER` with
 > `set search_path = public` and explicit grants (`EXECUTE` revoked from
