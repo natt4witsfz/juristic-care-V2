@@ -148,6 +148,38 @@ Nothing has been applied anywhere, so rollback is purely local:
   `202607090001` to restore the v1 RPC bodies, policies and grants). No
   production database is involved at any point.
 
+## 9a. Post-apply addendum (2026-07-10) — pgcrypto schema-resolution fix
+
+- The Stage 1 migrations (`202607090001`, `202607100001`, including the
+  storage-ownership cast fix `155f800`) **were applied to staging**.
+- The linked **db lint then failed** on `public.verify_profile_pin`:
+  `function crypt(text, text) does not exist`. Root cause: the v1 profile-PIN
+  functions carry a fixed `set search_path = public` but call pgcrypto
+  (`crypt`/`gen_salt`) unqualified, while Supabase installs pgcrypto in the
+  `extensions` schema.
+- The fix is a **new forward migration**,
+  `supabase/migrations/202607100002_pgcrypto_schema_fix.sql`, which
+  redefines only the two currently-active affected functions
+  (`create_profile`, `verify_profile_pin`) with schema-qualified
+  `extensions.crypt` / `extensions.gen_salt`. Everything else — signatures,
+  return types, authorization, SECURITY DEFINER, the fixed
+  `search_path = public` (no extension schema added to it), validation,
+  audit behavior, PIN format, grants — is unchanged. No PIN or hash is
+  exposed. The already-applied migration files were **not rewritten** and no
+  migration repair was used.
+- Classification of every pgcrypto call site: `create_profile` and
+  `verify_profile_pin` (v1) are currently active → fixed here; the v1
+  `create_job` crypt call was already replaced by the Stage 1 fail-closed
+  stub → not active, not redefined; `gen_random_uuid()` column defaults are
+  built-in (`pg_catalog`), not pgcrypto; the unapplied Stage 2 migration on
+  its own branch also calls pgcrypto and will be corrected there before it
+  is ever applied.
+- `stage1_smoke.sql` gained section 7 asserting the qualification (and that
+  no unqualified call remains) plus a check that migration `202607100002` is
+  recorded as applied. The smoke test has **not yet been rerun** against
+  staging; the lint is not claimed fixed until the forward migration is
+  applied and db lint reruns clean.
+
 ## 10. Confirmation — no Supabase resource modified
 
 No migration was applied, no `supabase db push`, no `psql`/CLI connection was

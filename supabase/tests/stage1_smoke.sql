@@ -10,8 +10,12 @@
 --
 -- Read-only: only DO-block assertions; writes nothing. Every failed
 -- assertion raises, so a clean run (ending with the final notice) means PASS.
--- Status: a staging project exists, but no migration has been applied to it
--- yet, and this smoke test has not yet been run against PostgreSQL.
+-- Status: migrations 202607090001 and 202607100001 are applied to staging;
+-- linked db lint then flagged unqualified pgcrypto calls in the v1 profile
+-- PIN functions ("function crypt(text, text) does not exist" under the fixed
+-- search_path). The forward fix is migration
+-- 202607100002_pgcrypto_schema_fix.sql (applied files were not rewritten).
+-- This smoke test has NOT yet been rerun after that fix.
 -- ============================================================================
 
 -- 1. Provenance schema additions ---------------------------------------------
@@ -268,6 +272,53 @@ begin
     end if;
   end;
   raise notice 'PASS: write RPCs fail closed (Stage 1 stubs)';
+end $$;
+
+-- 7. pgcrypto schema qualification (forward fix 202607100002) -----------------
+do $$
+declare
+  f record;
+  src text;
+  stripped text;
+begin
+  for f in
+    select * from (values ('create_profile'), ('verify_profile_pin')) as v(fname)
+  loop
+    select p.prosrc into src from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = f.fname;
+    if src is null then
+      raise exception 'FAIL: % missing', f.fname;
+    end if;
+    if src not like '%extensions.crypt(%' then
+      raise exception 'FAIL: % does not use extensions.crypt', f.fname;
+    end if;
+    if f.fname = 'create_profile' and src not like '%extensions.gen_salt(%' then
+      raise exception 'FAIL: create_profile does not use extensions.gen_salt';
+    end if;
+    -- After removing the qualified calls, no bare pgcrypto call may remain.
+    stripped := replace(replace(src, 'extensions.crypt(', ''), 'extensions.gen_salt(', '');
+    if stripped like '%crypt(%' or stripped like '%gen_salt(%' then
+      raise exception 'FAIL: % still contains an unqualified pgcrypto call', f.fname;
+    end if;
+  end loop;
+  raise notice 'PASS: profile PIN functions schema-qualify pgcrypto';
+end $$;
+
+-- The forward fix migration must be recorded once applied.
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+             where table_schema = 'supabase_migrations'
+               and table_name = 'schema_migrations') then
+    if not exists (select 1 from supabase_migrations.schema_migrations
+                   where version = '202607100002') then
+      raise exception 'FAIL: forward migration 202607100002 not recorded as applied';
+    end if;
+    raise notice 'PASS: forward migration 202607100002 is applied';
+  else
+    raise notice 'SKIP: no supabase_migrations.schema_migrations table (non-Supabase host)';
+  end if;
 end $$;
 
 do $$ begin raise notice 'STAGE 1 SMOKE: ALL ASSERTIONS PASSED'; end $$;
