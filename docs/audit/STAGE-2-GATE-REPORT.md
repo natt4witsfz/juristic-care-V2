@@ -7,8 +7,9 @@
 > assertions passed), with the three Stage 1 fix commits cherry-picked onto
 > this branch. Per the stage-gate protocol in
 > `docs/audit/14-strategy-b-rebuild-plan.md` §7.
-> **Hard stop — Stage 3 not started. Frontend untouched. Form trigger
-> disabled. The Stage 2 migration has NOT been applied to staging.**
+> **Status: STAGE 2 GATE APPROVED — runtime-verified on staging 2026-07-10
+> (see §10). Hard stop — Stage 3 not started. Frontend untouched. Form
+> trigger disabled.**
 
 ## 1. Files changed
 
@@ -178,7 +179,34 @@ no secret handled, no production or staging resource touched. All Stage 2
 output is files in this repository. `SUPABASE_ENABLED` remains false; Google
 Form ingestion remains disabled.
 
-## 9. Approval request
+## 10. Final runtime verification on staging (2026-07-10) — GATE APPROVED
+
+Stage 2 has been runtime-verified successfully on the staging Supabase
+project (fake data only):
+
+- Migration `202607100003_job_domain_stage2` **applied successfully**.
+- Forward fix `202607100004_clean_text_null_fix` **applied successfully**
+  (resolving the §7a db lint finding).
+- Local and remote migration histories **match through `202607100004`**.
+- Linked database lint **passed** (ERRORLEVEL = 0).
+- `supabase/tests/stage2_smoke.sql` **completed successfully with no failed
+  assertions** — enforced bodies installed (PIN, no-PIN fallback,
+  transitions, evidence), bootstrap never serves snapshot jobs, transition
+  table and Asia/Bangkok normalization behave as specified, `_clean_text`
+  section 5b passes, and the transactional ingestion round-trip (idempotency,
+  exactly one raw=true job + PIN + timeline + audit, no PIN leakage)
+  succeeded with its **write section rolled back**.
+- No production project or real resident data was touched.
+- `SUPABASE_ENABLED` remains **false**; the Google Form trigger remains
+  **disabled**; Stage 3 has **not** started.
+
+The declared limits in §6 are hereby closed: the Stage 2 workflow boundary is
+now observed live, not just asserted by design. **The Stage 2 gate is
+approved**; this state is tagged `stage-2-staging-verified`. The next step is
+Stage 3 (frontend relational read path), which does not begin without
+explicit approval.
+
+## 9. Approval request (historical — superseded by §10)
 
 **Go/no-go:**
 1. Approve one commit of the Stage 2 review-preparation changes to
