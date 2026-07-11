@@ -76,6 +76,23 @@ const hostingOut = path.join(dist, ".openai", "hosting.json");
 fs.mkdirSync(path.dirname(hostingOut), { recursive: true });
 fs.copyFileSync(hostingConfig, hostingOut);
 
+const contentTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8"
+};
+
+const staticAssets = {};
+for (const file of files) {
+  const route = `/${file.replace(/\\\\/g, "/")}`;
+  const ext = path.extname(file);
+  staticAssets[route] = {
+    contentType: contentTypes[ext] || "application/octet-stream",
+    body: fs.readFileSync(path.join(dist, file), "utf8")
+  };
+}
+
 const worker = `const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
   "X-Content-Type-Options": "nosniff",
@@ -84,28 +101,31 @@ const worker = `const SECURITY_HEADERS = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
 };
 
-function withHeaders(response) {
-  const headers = new Headers(response.headers);
+const STATIC_ASSETS = ${JSON.stringify(staticAssets)};
+
+function responseFor(asset, status = 200) {
+  const headers = new Headers({ "Content-Type": asset.contentType });
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     headers.set(key, value);
   }
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
+  return new Response(asset.body, { status, headers });
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     const url = new URL(request.url);
-    let response = await env.ASSETS.fetch(request);
+    let pathname = decodeURIComponent(url.pathname);
+    if (pathname === "/") pathname = "/index.html";
 
-    if (response.status === 404 && !url.pathname.includes(".")) {
-      response = await env.ASSETS.fetch(new Request(new URL("/index.html", url), request));
+    if (pathname.includes("..")) {
+      return responseFor({ body: "Not found", contentType: "text/plain; charset=utf-8" }, 404);
     }
 
-    return withHeaders(response);
+    const asset = STATIC_ASSETS[pathname] || (!pathname.includes(".") ? STATIC_ASSETS["/index.html"] : null);
+    if (!asset) {
+      return responseFor({ body: "Not found", contentType: "text/plain; charset=utf-8" }, 404);
+    }
+    return responseFor(asset);
   }
 };
 `;
