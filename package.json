@@ -7,6 +7,8 @@
   "scripts": {
     "serve": "python3 -m http.server 4173",
     "build:sites": "node scripts/build-sites-static.mjs",
+    "build:preprod": "node scripts/build-sites-static.mjs --environment preproduction",
+    "build:production": "node scripts/build-sites-static.mjs --environment production",
     "check": "node --check app.js && node --check profiles.js && node --check supabase-client.js && node --check config.js && node --check js/security.js",
     "test": "node --test",
     "lint": "eslint . || echo 'ESLint not installed in this environment; see .eslintrc.json'",
