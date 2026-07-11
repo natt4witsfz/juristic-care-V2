@@ -111,6 +111,22 @@ test("Stage 4: closePin never enters normalized cache, storage, snapshots or log
     "normalizeJob fabricates closePin only in demo mode");
 });
 
+test("Stage 4: pin-card renders plaintext only for authorized viewer WITH a real PIN", () => {
+  // Guard against the live-validation defect: an authorized viewer of a job
+  // whose closePin is absent (always the case in Supabase mode) must get the
+  // masked fallback, never a literal undefined/null/empty PIN card.
+  assert.ok(appJs.includes("canSeeClosePin(currentUser, job) && job.closePin"),
+    "pin-card condition requires authorization AND a real PIN value");
+  const pinIdx = appJs.indexOf("canSeeClosePin(currentUser, job) && job.closePin");
+  const branch = appJs.slice(pinIdx, pinIdx + 600);
+  assert.ok(branch.includes("${job.closePin}"),
+    "authorized+present branch still renders the demo/local one-time PIN");
+  assert.ok(branch.includes("••••"), "masked fallback card retained");
+  // The plaintext interpolation exists only inside this guarded ternary.
+  assert.equal((appJs.match(/\$\{job\.closePin\}/g) || []).length, 1,
+    "no other template ever interpolates job.closePin");
+});
+
 test("Stage 4: M5/M6 are blocked before cache mutation in Supabase mode", () => {
   const request = fnBody(appJs, "requestOrDeleteUser");
   const guardIdx = request.indexOf("if (supabaseEnabled()) return showToast(");

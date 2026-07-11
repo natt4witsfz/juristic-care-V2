@@ -4608,7 +4608,10 @@ function openJob(id) {
   const exportHtml = `<div class="job-export-actions"><button class="secondary-btn" type="button" data-export-job-csv="${job.id}">Export CSV</button><button class="primary-btn" type="button" data-export-job-pdf="${job.id}">Export PDF</button></div>`;
   $("#modalTicket").textContent = job.id;
   $("#modalTitle").textContent = getText(job.title);
-  const pinHtml = canSeeClosePin(currentUser, job)
+  // Plaintext PIN renders only when the viewer is authorized AND a real value
+  // exists; in Supabase mode the cache never holds a PIN, so this always falls
+  // back to the masked card (never a literal undefined/null/empty).
+  const pinHtml = canSeeClosePin(currentUser, job) && job.closePin
     ? `<div class="pin-card"><span>PIN ปิดงาน</span><strong>${job.closePin}</strong><small>แสดงเฉพาะ Admin / ผู้มอบหมาย / เจ้าของห้อง / ผู้แจ้ง</small></div>`
     : `<div class="pin-card muted-pin"><span>PIN ปิดงาน</span><strong>••••</strong><small>ผู้ได้รับมอบหมายจะเห็นเฉพาะช่องกรอก PIN ตอนปิดงาน</small></div>`;
   const verifyHtml = canVerifyCompletion(currentUser, job)
