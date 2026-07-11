@@ -245,9 +245,13 @@ legacy PIN (plaintext, in transit only).
 pin_outcome }` (+ `target_id`; dry-run adds `dry_run: true`) — never PIN
 material, credentials, tokens or private URLs. Batch reconciliation
 `{submitted, inserted, skipped_existing, failed}` is accumulated by the
-driving script (`scripts/import-legacy-jobs.mjs`: staging allowlist,
-env-only credential, dry-run default, `--commit` + `CONFIRM_IMPORT`); the
-gate is `inserted + skipped_existing = submitted` and `failed = 0`.
+driving script (`scripts/import-legacy-jobs.mjs`: staging allowlist;
+credential = the **modern Supabase Secret Key** (`sb_secret_…`) from the
+`SUPABASE_SECRET_KEY` environment variable only, strictly format-validated,
+sent **only** in the `apikey` header — never `Authorization: Bearer`, which
+is the deprecated legacy service_role-JWT flow; dry-run default; `--commit`
++ `CONFIRM_IMPORT`); the gate is `inserted + skipped_existing = submitted`
+and `failed = 0`.
 **Errors:** `FORBIDDEN` (non-admin/non-service callers); all record-level
 problems return structured `failed` results instead of raising.
 

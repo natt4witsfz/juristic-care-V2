@@ -108,14 +108,23 @@ fake sample intentionally contains one such record, so a full-sample run is
 
 ## 9. Driver security (`scripts/import-legacy-jobs.mjs`)
 
-Credential only from `SUPABASE_SERVICE_ROLE_KEY` env; credential-shaped argv
-values are refused outright; the key is never printed, logged or serialized
-(guarded per console line by tests). Project allowlist contains exactly the
-staging ref `wdqadjikpkclmihbnfgg`; every other ref is refused. Dry-run is
-the default; a real write requires both `--commit` and
-`CONFIRM_IMPORT=<exact --batch uuid>`. One RPC call per record; the only
-network call is the import RPC. The driver was **not executed** in this
-phase.
+Credential is the **modern Supabase Secret Key** read only from the
+`SUPABASE_SECRET_KEY` environment variable, strictly validated against
+`^sb_secret_[A-Za-z0-9_-]{10,}$` — empty values, publishable/anon/legacy-JWT
+keys, masked display copies (asterisks/bullets/ellipsis), whitespace, line
+breaks, non-printables and arbitrary text are rejected with only the generic
+message "Invalid server credential format" (the value is never echoed,
+partially displayed, hashed, or included in errors). The key is sent **only**
+in the `apikey` request header; no `Authorization: Bearer` header exists in
+the driver (that pattern is the deprecated legacy service_role-JWT flow,
+found unusable during the first Section D attempt — the credential-format
+precheck failed before any request reached Supabase, and no import
+occurred). Credential-shaped argv values are refused outright; the key never
+appears in stdout/stderr/reports (guarded per console line by tests).
+Project allowlist contains exactly the staging ref `wdqadjikpkclmihbnfgg`;
+every other ref is refused. Dry-run is the default; a real write requires
+both `--commit` and `CONFIRM_IMPORT=<exact --batch uuid>`. One RPC call per
+record; the only network call is the import RPC.
 
 ## 10. Cleanup (`supabase/tests/stage5_cleanup.sql`)
 

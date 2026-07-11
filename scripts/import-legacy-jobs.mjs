@@ -3,9 +3,14 @@
 // Stage 5 legacy-import driver (STAGING ONLY).
 //
 // Security model:
-//   * The service-role credential is read ONLY from the environment variable
-//     SUPABASE_SERVICE_ROLE_KEY. It is never accepted on the command line,
-//     never printed, never serialized into reports, logs or errors.
+//   * The server credential is the MODERN Supabase Secret Key (sb_secret_...)
+//     read ONLY from the environment variable SUPABASE_SECRET_KEY. Legacy
+//     service_role JWTs are not accepted. The key is never accepted on the
+//     command line, never printed, partially displayed, hashed, serialized
+//     or included in any error message.
+//   * The modern Secret Key is sent ONLY in the `apikey` request header —
+//     never in `Authorization: Bearer` (that pattern is the deprecated
+//     legacy-JWT flow).
 //   * The target project is checked against a hard allowlist containing only
 //     the staging project ref; every other project is refused.
 //   * Dry-run is the DEFAULT. A real write requires BOTH --commit and the
@@ -16,7 +21,7 @@
 // Usage:
 //   node scripts/import-legacy-jobs.mjs [--file scripts/legacy-sample-jobs.json]
 //                                       [--batch <uuid>] [--commit]
-// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CONFIRM_IMPORT (commit only)
+// Env: SUPABASE_URL, SUPABASE_SECRET_KEY, CONFIRM_IMPORT (commit only)
 
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -44,9 +49,18 @@ const commit = args.includes("--commit");
 const batchId = argValue("--batch", commit ? null : randomUUID());
 
 // --- environment -------------------------------------------------------------
+// Credential validation: modern Secret Key only. The strict pattern rejects
+// empty values, publishable (sb_publishable_) and anon/JWT (eyJ...) keys,
+// masked display copies (asterisks, bullets, ellipsis), whitespace, line
+// breaks, non-printable characters, and arbitrary text. The rejected value is
+// never echoed — only a generic message is shown.
+function isValidSecretKey(k) {
+  return typeof k === "string" && /^sb_secret_[A-Za-z0-9_-]{10,}$/.test(k);
+}
 const url = process.env.SUPABASE_URL || "";
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-if (!url || !key) fail("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in the environment");
+const key = process.env.SUPABASE_SECRET_KEY || "";
+if (!url) fail("SUPABASE_URL must be set in the environment");
+if (!isValidSecretKey(key)) fail("Invalid server credential format");
 
 const ref = (new URL(url).hostname.split(".")[0] || "").toLowerCase();
 if (!STAGING_PROJECT_ALLOWLIST.includes(ref)) {
@@ -73,10 +87,11 @@ if (!Array.isArray(records) || records.length === 0) fail("input file must be a 
 async function importOne(record) {
   const res = await fetch(`${url}/rest/v1/rpc/import_legacy_job`, {
     method: "POST",
+    // Modern Secret Key goes ONLY in apikey; no Authorization header (the
+    // Bearer pattern belongs to the deprecated legacy service_role JWT).
     headers: {
       "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${key}`
+      apikey: key
     },
     body: JSON.stringify({
       p_import_batch_id: batchId,

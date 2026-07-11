@@ -139,7 +139,8 @@ test("Stage 5: unresolved relationships are reported, never invented", () => {
 test("Stage 5: driver security controls", () => {
   assert.ok(driver.includes('STAGING_PROJECT_ALLOWLIST = ["wdqadjikpkclmihbnfgg"]'),
     "staging allowlist is exactly the approved ref");
-  assert.ok(driver.includes("process.env.SUPABASE_SERVICE_ROLE_KEY"), "credential from env only");
+  assert.ok(driver.includes("process.env.SUPABASE_SECRET_KEY"), "credential from env only");
+  assert.ok(!driver.includes("SUPABASE_SERVICE_ROLE_KEY"), "legacy service_role env var removed");
   assert.ok(driver.includes("credentials must never be passed as command-line arguments"),
     "argv credentials refused");
   assert.ok(driver.includes("p_dry_run: !commit") && driver.includes('args.includes("--commit")'),
@@ -158,6 +159,39 @@ test("Stage 5: driver security controls", () => {
   assert.ok(fetches[0].includes("/rest/v1/rpc/import_legacy_job"), "and it is the import RPC");
   assert.ok(driver.includes("counts.inserted + counts.skipped_existing === counts.submitted"),
     "reconciliation gate implemented exactly");
+});
+
+test("Stage 5: driver accepts only the modern Secret Key, apikey header only", () => {
+  // Format gate: strict sb_secret_ pattern, generic error, no echo.
+  assert.ok(driver.includes("/^sb_secret_[A-Za-z0-9_-]{10,}$/"), "strict modern-key pattern");
+  assert.ok(driver.includes('fail("Invalid server credential format")'),
+    "generic safe rejection message");
+  const failCalls = [...driver.matchAll(/fail\(([^)]*)\)/g)].map(m => m[1]);
+  assert.ok(failCalls.every(a => !a.includes("key") || a.includes('"')),
+    "no fail() call interpolates the credential");
+  assert.ok(!/key\.(slice|substring|substr)|createHash[^\n]*key/.test(driver),
+    "no partial display or hashing of the credential");
+  // Behavior of the validation pattern (JS mirror of the driver's check):
+  const valid = k => typeof k === "string" && /^sb_secret_[A-Za-z0-9_-]{10,}$/.test(k);
+  assert.ok(valid("sb_secret_abcdefghij123456"), "modern Secret Key accepted");
+  assert.ok(!valid(""), "empty rejected");
+  assert.ok(!valid("sb_secret_abc***masked***"), "asterisk-masked value rejected");
+  assert.ok(!valid("sb_secret_abc•••def"), "bullet-masked value rejected");
+  assert.ok(!valid("sb_secret_abc…def"), "ellipsis-masked value rejected");
+  assert.ok(!valid("sb_secret_abc def1234"), "whitespace rejected");
+  assert.ok(!valid("sb_secret_abc\ndef1234"), "line break rejected");
+  assert.ok(!valid("sb_secret_abcdef123"), "non-printable rejected");
+  assert.ok(!valid("sb_publishable_abcdefghij"), "publishable key rejected");
+  assert.ok(!valid("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.x.y"), "anon/legacy JWT rejected");
+  assert.ok(!valid("just some text"), "arbitrary text rejected");
+  // Request construction: apikey only; no Authorization/Bearer in CODE
+  // (comments explaining the rule are exempt).
+  const driverCode = driver.split("\n")
+    .filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/.*$/, "")).join("\n");
+  const headersBlock = driverCode.match(/headers: \{[\s\S]*?\}/)[0];
+  assert.ok(headersBlock.includes("apikey: key"), "modern key sent in apikey");
+  assert.ok(!/Authorization|Bearer/.test(driverCode),
+    "no Authorization header or Bearer usage anywhere in driver code");
 });
 
 test("Stage 5: cleanup script fails closed", () => {
