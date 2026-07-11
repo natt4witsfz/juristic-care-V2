@@ -5285,20 +5285,31 @@ document.addEventListener("click", e => {
     });
   }
   if (e.target.closest("#addUserBtn")) openUserModal();
-  if (e.target.closest("#accountMenuBtn")) $("#accountMenu").classList.toggle("hidden");
+  const closeAccountMenu = () => {
+    $("#accountMenu")?.classList.add("hidden");
+    $("#accountMenuBtn")?.setAttribute("aria-expanded", "false");
+  };
+  if (e.target.closest("#accountMenuBtn")) {
+    const menu = $("#accountMenu");
+    const nextOpen = menu?.classList.contains("hidden");
+    menu?.classList.toggle("hidden", !nextOpen);
+    $("#accountMenuBtn")?.setAttribute("aria-expanded", String(nextOpen));
+    return;
+  }
+  if (!e.target.closest("#accountMenu")) closeAccountMenu();
   if (e.target.closest("#editOwnProfileBtn")) {
     openProfileModal(currentUser.id);
-    $("#accountMenu").classList.add("hidden");
+    closeAccountMenu();
     return;
   }
   if (e.target.closest("#applyAdminViewAsBtn")) {
     enterAdminPreview($("#adminViewAsSelect")?.value || "admin");
-    $("#accountMenu").classList.add("hidden");
+    closeAccountMenu();
     return;
   }
   if (e.target.closest("#exitAdminPreviewBtn")) {
     exitAdminPreview();
-    $("#accountMenu").classList.add("hidden");
+    closeAccountMenu();
     return;
   }
   if (e.target.closest("#clearLogFiltersBtn")) {
@@ -5312,11 +5323,11 @@ document.addEventListener("click", e => {
   }
   if (e.target.closest("#changeOwnPasswordBtn")) {
     openPasswordModal(currentUser.id);
-    $("#accountMenu").classList.add("hidden");
+    closeAccountMenu();
   }
   if (e.target.closest("#exportEmployeesBtn") && currentUser.role === "admin") {
     exportEmployeesCsv();
-    $("#accountMenu").classList.add("hidden");
+    closeAccountMenu();
     showToast(currentLang === "th" ? "Export รายชื่อพนักงานแล้ว" : "Employees exported");
   }
   if (e.target.closest("#exportEmployeesPageBtn") && canManageTeam()) {
