@@ -1,0 +1,111 @@
+[
+  {
+    "id": "LEG-0001",
+    "source": "legacy_local_storage",
+    "status": "received",
+    "raw": false,
+    "title": { "th": "งานตัวอย่างปกติ (ข้อมูลปลอม)", "en": "Normal fake legacy job" },
+    "issueDescription": "Fake description only — no real resident data",
+    "roomNo": "FAKE-0001",
+    "category": "plumbing",
+    "priority": "normal",
+    "reporter": "stage3admin",
+    "assignee": "stage3admin",
+    "assignedBy": "stage3admin",
+    "jobDate": "2026-05-01",
+    "createdAt": "2026-05-01T09:00:00",
+    "updatedAt": "2026-05-02T10:30:00",
+    "closePin": "1111",
+    "timeline": [
+      { "at": "2026-05-01T09:00:00", "by": "stage3admin", "action": "created", "fromStatus": "", "toStatus": "waiting", "message": "fake created event" },
+      { "at": "2026-05-02T10:30:00", "by": "stage3admin", "action": "assigned", "fromStatus": "waiting", "toStatus": "in_progress", "message": "fake assigned event" }
+    ]
+  },
+  {
+    "id": "LEG-0002-ALIAS",
+    "source": "legacy_local_storage",
+    "status": "follow_up",
+    "title": "Alias-status fake job (follow_up → repaired_follow_up)",
+    "nextUpdateDate": "2026-05-20",
+    "createdAt": "2026-05-03T08:00:00",
+    "updatedAt": "2026-05-04T08:00:00",
+    "closePin": "2222"
+  },
+  {
+    "id": "LEG-0003-NOREL",
+    "source": "legacy_local_storage",
+    "status": "open",
+    "title": "Unresolved-relationship fake job",
+    "roomNo": "NO-SUCH-ROOM",
+    "reporter": "u99-demo-id-not-a-user",
+    "assignee": "u98-demo-id-not-a-user",
+    "createdAt": "2026-05-05T11:00:00"
+  },
+  {
+    "id": "LEG-0004-NOPIN",
+    "source": "legacy_local_storage",
+    "status": "done",
+    "title": "Completed fake job without PIN",
+    "createdAt": "2026-04-01T09:00:00",
+    "updatedAt": "2026-04-03T16:00:00",
+    "completedAt": "2026-04-03T16:00:00"
+  },
+  {
+    "id": "LEG-0005-PIN",
+    "source": "legacy_local_storage",
+    "status": "inspecting",
+    "title": "Active fake job with plaintext legacy PIN (must rotate)",
+    "closePin": "4321",
+    "createdAt": "2026-05-06T14:00:00",
+    "updatedAt": "2026-05-07T09:00:00"
+  },
+  {
+    "id": "LEG-0006-EV-OK",
+    "source": "legacy_local_storage",
+    "status": "open",
+    "title": "Stable managed-evidence fake job",
+    "createdAt": "2026-05-08T10:00:00",
+    "attachments": [
+      { "objectPath": "jobs/legacy/fake-evidence-1.png", "originalName": "before.png", "mimeType": "image/png", "sizeBytes": 2048 }
+    ]
+  },
+  {
+    "id": "LEG-0007-EV-BIN",
+    "source": "legacy_local_storage",
+    "status": "open",
+    "title": "Embedded dataURL evidence fake job (must fail safely)",
+    "createdAt": "2026-05-09T10:00:00",
+    "attachments": [
+      "data:image/svg+xml;utf8,%3Csvg%3Efake%3C/svg%3E"
+    ]
+  },
+  {
+    "id": "DEL-1751000000000",
+    "source": "legacy_local_storage",
+    "status": "open",
+    "title": "Delete-request pseudo-job (must be excluded)",
+    "deleteRequest": { "userId": "u99", "requestedBy": "u98", "status": "pending" },
+    "createdAt": "2026-05-10T10:00:00"
+  },
+  {
+    "id": "LEG-SHARED-ID",
+    "source": "legacy_local_storage",
+    "status": "open",
+    "title": "Shared legacy id — source A",
+    "createdAt": "2026-05-11T10:00:00"
+  },
+  {
+    "id": "LEG-SHARED-ID",
+    "source": "legacy_snapshot_archive",
+    "status": "open",
+    "title": "Shared legacy id — source B (must get a different target id)",
+    "createdAt": "2026-05-11T10:00:00"
+  },
+  {
+    "id": "LEG-0001",
+    "source": "legacy_local_storage",
+    "status": "received",
+    "title": "Repeat of LEG-0001 for idempotency (must be skipped on commit)",
+    "createdAt": "2026-05-01T09:00:00"
+  }
+]

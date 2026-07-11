@@ -30,8 +30,10 @@ test.todo("Stage 2: get_app_bootstrap never serves jobs from app_snapshots");
 test.todo("Stage 4: a WebApp-created job appears after reload in another session");
 
 // ---- Stage 5 — legacy import & reconciliation ----
-test.todo("Stage 5: duplicate (source, legacy_id) import inserts exactly one job");
-test.todo("Stage 5: legacy plaintext PIN is hashed in-DB or rotated, never stored/returned plaintext");
+// Activated: duplicate (source, legacy_id) idempotency and rotate-all PIN
+// (hash-only, never stored/returned plaintext) are covered by
+// test/stage5-import.test.js locally and supabase/tests/stage5_smoke.sql on
+// staging.
 
 // ---- Stage 7 — Google Form end-to-end ----
 test.todo("Stage 7: duplicate external_id creates exactly one job (idempotent)");

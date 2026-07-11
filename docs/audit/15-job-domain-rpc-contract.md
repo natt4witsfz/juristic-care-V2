@@ -201,29 +201,55 @@ staff member classifies it, which sets `raw = false`.
 `duplicate: true` rather than erroring. The Form trigger remains disabled
 until Stage 7.
 
-## 8. `import_legacy_job(p_import_batch_id uuid, p_job jsonb, p_dry_run boolean default true) → jsonb` — Stage 5, admin/service only
+## 8. `import_legacy_job(p_import_batch_id uuid, p_job jsonb, p_dry_run boolean default true) → jsonb` — Stage 5, admin/service only (implemented in migration `202607110001`, not yet applied)
 
 Legacy import per plan §4; `create_job` must never be used for import.
 
-**Input (`p_job`):** `legacy_id` (required), original `created_at`/`updated_at`,
-status/subStatus, assignee/assigner references, timeline events, evidence
-references, optional legacy PIN (plaintext, in transit only).
+**Input (`p_job`):** `id`/`legacyId` (required), original
+`createdAt`/`updatedAt` (naive values read as Asia/Bangkok), status/subStatus
+(legacy aliases mapped; unknown values fail), assignee/assigner/reporter
+references (uuid or `login_id`; unresolved → NULL + `unresolved_*` note,
+never invented), room number, timeline events, evidence references, optional
+legacy PIN (plaintext, in transit only).
 
-**Contract:** provenance `source = 'legacy_local_storage'`, row carries
-`legacy_id` + `import_batch_id`; idempotent via the unique index
-`uq_jobs_source_legacy` — an existing (`source`,`legacy_id`) is reported
-`skipped`, never re-inserted or mutated; timeline rows are marked
-`imported = true`; **dry-run writes nothing**. PIN handling (Amendment 3):
-hash immediately in-DB via `crypt(pin, gen_salt('bf'))` or rotate; plaintext
-is never persisted or logged; outcome reported only as
-`pin_migrated | pin_rotated | no_pin | pin_migration_failed`; no PIN or hash
-ever appears in the result. No notification side effects.
+**Contract (Stage 5 enforced body):**
+- Provenance `source` preserved verbatim (default `'legacy_local_storage'`);
+  row carries `legacy_id` + `import_batch_id`.
+- **Deterministic target id:**
+  `'LG-' || upper(first 12 hex of sha256(lower(trim(source)) || ':' || trim(legacy_id)))`
+  — no randomness; order-independent; different sources with the same
+  legacy_id diverge.
+- Idempotent via `uq_jobs_source_legacy` — an existing (`source`,`legacy_id`)
+  is reported `skipped / already_imported`, never re-inserted or mutated.
+- **One call = one record = one transaction**; any write-phase failure rolls
+  back the record's job, PIN, timeline, attachments and audit rows together.
+- **Dry-run (default) writes nothing** — no jobs, PIN rows, timeline,
+  attachments, audit, Storage or notifications.
+- Timeline rows preserved with `imported = true` and original timestamps;
+  nothing historical is fabricated.
+- **Evidence:** stable managed `objectPath` references map to
+  `job_attachments`; embedded dataURL/base64/blob/local-file evidence fails
+  the whole record with `EVIDENCE_BINARY_MIGRATION_REQUIRED` (binary
+  migration = future ticket; no Storage upload in Stage 5).
+- **PIN handling (Amendment 3, rotate-all):** client-storage plaintext is
+  never trusted; active jobs get a fresh in-DB PIN stored only as
+  `extensions.crypt(pin, gen_salt('bf'))` with `rotated_at`; plaintext (old
+  or new) is never persisted, returned or logged; outcome reported only as
+  `pin_migrated | pin_rotated | no_pin | pin_migration_failed`. Stage 5 does
+  not distribute rotated PINs — re-issue (or the no-PIN verification flow)
+  precedes operational reliance.
+- `DEL-*`/`deleteRequest` pseudo-jobs → `skipped / pseudo_job`. No
+  notification side effects; audit row on real success only.
 
 **Output (per record):** `{ legacy_id, status: ok|skipped|failed, reason,
-pin_outcome }`. Batch reconciliation `{submitted, inserted, skipped_existing,
-failed}` is accumulated by the driving script; the gate is
-`inserted + skipped_existing = submitted` and `failed = 0`.
-**Errors:** `FORBIDDEN` (non-admin), `INVALID_INPUT`.
+pin_outcome }` (+ `target_id`; dry-run adds `dry_run: true`) — never PIN
+material, credentials, tokens or private URLs. Batch reconciliation
+`{submitted, inserted, skipped_existing, failed}` is accumulated by the
+driving script (`scripts/import-legacy-jobs.mjs`: staging allowlist,
+env-only credential, dry-run default, `--commit` + `CONFIRM_IMPORT`); the
+gate is `inserted + skipped_existing = submitted` and `failed = 0`.
+**Errors:** `FORBIDDEN` (non-admin/non-service callers); all record-level
+problems return structured `failed` results instead of raising.
 
 ---
 
