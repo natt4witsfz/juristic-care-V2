@@ -4,9 +4,11 @@
 > Baseline: Stage 3 closed and tagged `stage-3-staging-verified` (commit
 > `4443096`). Per the stage-gate protocol in
 > `docs/audit/14-strategy-b-rebuild-plan.md` §7.
-> **Hard stop — Stage 5 not started. No migration created or applied. Form
-> trigger disabled. `SUPABASE_ENABLED` remains false. Not yet
-> staging-validated.**
+> **Status: STAGE 4 GATE APPROVED — staging browser validation completed
+> 2026-07-11 (see §12), including one live-found regression fixed and
+> retested (`edf0933`). Hard stop — Stage 5 not started. No migration
+> created or applied. Form trigger disabled. `SUPABASE_ENABLED` remains
+> false.**
 
 ## 1. What Stage 4 does
 
@@ -139,7 +141,62 @@ await the approved staging session. Nothing here is claimed as live-tested.
 revert the Stage 4 commit once created) restores the verified Stage 3 tree.
 Nothing was applied or deployed anywhere.
 
-## 11. Approval request
+## 12. Staging browser validation (2026-07-11) — GATE APPROVED
+
+Validated live against the staging Supabase project as fake account
+`stage3admin`, via a temporary uncommitted `config.js` override (Publishable
+Key only, restored afterwards) and a local server on port 4173.
+
+1. **Check A — passed:** creation-time attachments were blocked with the
+   bilingual message; no job was created after hard reload. Live Storage
+   inspection was **not** performed; the pre-upload guarantee remains
+   automated/source-level evidence.
+2. **Initial Check B — failed:** an authorized hydrated job detail rendered
+   the literal value `undefined`, because the PIN-card condition checked
+   authorization but not PIN presence.
+3. **Regression fixed and retested** (commit `edf0933`,
+   `fix(stage-4): mask unavailable close PIN`): the hydrated job detail
+   displayed only the masked fallback — no `undefined`, `null`, empty value,
+   or plaintext PIN.
+4. **Revised Check B — passed:** "Stage 4 PIN Completion Test" was created
+   through the live `create_job` RPC with no attachment; the one-time PIN
+   dialog appeared exactly once; after hard reload the job appeared exactly
+   once with the PIN masked and unrecoverable.
+5. **Check C — passed:** the job was assigned to `stage3admin` through
+   `assign_job`; the assigned/received state survived hard reload.
+6. **Check D — passed:** the job was completed using the valid one-time PIN
+   and one harmless evidence image; the completed state and timeline
+   survived hard reload.
+7. **Check E — passed:** "Stage 4 No-PIN Verification Test" was assigned to
+   `stage3admin`; the no-PIN completion path forced `pending_inspection`
+   with `waiting_owner_or_admin_verification`; admin verification via
+   `verify_job_completion` then completed the job; both transitions survived
+   reload.
+8. **Check F — passed:** an Offline create attempt displayed a bilingual
+   error, did not mutate the cache, showed no PIN dialog, and created no job
+   after returning Online and reloading.
+9. **Check G — passed:** an Incognito session showed both successful Stage 4
+   jobs exactly once in their completed server states; logout/login and hard
+   reload produced no duplicates, demo seed jobs, or stale local state.
+10. The earlier fake job whose PIN appeared in a screenshot was treated as
+    **compromised** and excluded from valid-PIN completion testing.
+11. **Not separately live-tested** (automated/source-level evidence retained;
+    no browser validation claimed): duplicate-click/in-flight behavior,
+    stale `app_snapshots` injection, direct Storage-state inspection for
+    Check A.
+12. **Wrap-up:** local server stopped; `config.js` restored; no URL,
+    Publishable Key, Secret Key, service_role key, password, JWT, or
+    credential was committed; no migration, database schema, Edge Function,
+    Google Form trigger, or Production resource was touched.
+
+Final results after restore: **53 tests — 36 pass, 0 fail, 17 todo**;
+`npm run check` — PASS; `git diff --check` — PASS.
+
+**The Stage 4 gate is approved**; this state is tagged
+`stage-4-staging-verified`. Stage 5 (legacy import) does not begin without
+explicit approval.
+
+## 11. Approval request (historical — superseded by §12)
 
 **Go/no-go:** (1) approve one commit of the Stage 4 deliverables to
 `feat/stage-4-frontend-relational-write` and push; (2) approve the Stage 4
