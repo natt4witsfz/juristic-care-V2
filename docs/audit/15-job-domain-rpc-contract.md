@@ -247,9 +247,12 @@ material, credentials, tokens or private URLs. Batch reconciliation
 `{submitted, inserted, skipped_existing, failed}` is accumulated by the
 driving script (`scripts/import-legacy-jobs.mjs`: staging allowlist;
 credential = the **modern Supabase Secret Key** (`sb_secret_…`) from the
-`SUPABASE_SECRET_KEY` environment variable only, strictly format-validated,
-sent **only** in the `apikey` header — never `Authorization: Bearer`, which
-is the deprecated legacy service_role-JWT flow; dry-run default; `--commit`
+`SUPABASE_SECRET_KEY` environment variable only, validated as an
+`sb_secret_`-prefixed single printable token (no whitespace/control/masked
+characters; the suffix alphabet is deliberately not restricted because
+Supabase documents only the prefix), sent **only** in the `apikey` header —
+never `Authorization: Bearer`, which is the deprecated legacy
+service_role-JWT flow; dry-run default; `--commit`
 + `CONFIRM_IMPORT`); the gate is `inserted + skipped_existing = submitted`
 and `failed = 0`.
 **Errors:** `FORBIDDEN` (non-admin/non-service callers); all record-level

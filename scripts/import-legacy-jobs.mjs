@@ -49,13 +49,20 @@ const commit = args.includes("--commit");
 const batchId = argValue("--batch", commit ? null : randomUUID());
 
 // --- environment -------------------------------------------------------------
-// Credential validation: modern Secret Key only. The strict pattern rejects
-// empty values, publishable (sb_publishable_) and anon/JWT (eyJ...) keys,
-// masked display copies (asterisks, bullets, ellipsis), whitespace, line
-// breaks, non-printable characters, and arbitrary text. The rejected value is
-// never echoed — only a generic message is shown.
+// Credential validation: modern Secret Key only. Supabase documents the
+// sb_secret_ prefix but not an exact suffix alphabet, so the suffix is NOT
+// restricted to a guessed character set — the value must merely be a single
+// printable-ASCII token: exact sb_secret_ prefix, reasonable minimum length,
+// no whitespace/CR/LF/TAB/control/non-printable characters, and no
+// masked-display markers (*, bullets, ellipsis). Publishable/anon/JWT keys
+// and arbitrary text fail the prefix. The rejected value is never echoed —
+// only a generic message is shown.
 function isValidSecretKey(k) {
-  return typeof k === "string" && /^sb_secret_[A-Za-z0-9_-]{10,}$/.test(k);
+  if (typeof k !== "string" || !k.startsWith("sb_secret_")) return false;
+  if (k.length < 20) return false;
+  if (/[^\x21-\x7e]/.test(k)) return false; // space, CR/LF/TAB, controls, non-ASCII (incl. bullets/ellipsis)
+  if (k.includes("*")) return false;        // asterisk-masked display copy
+  return true;
 }
 const url = process.env.SUPABASE_URL || "";
 const key = process.env.SUPABASE_SECRET_KEY || "";

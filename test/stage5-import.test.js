@@ -162,8 +162,12 @@ test("Stage 5: driver security controls", () => {
 });
 
 test("Stage 5: driver accepts only the modern Secret Key, apikey header only", () => {
-  // Format gate: strict sb_secret_ pattern, generic error, no echo.
-  assert.ok(driver.includes("/^sb_secret_[A-Za-z0-9_-]{10,}$/"), "strict modern-key pattern");
+  // Format gate: sb_secret_ prefix + printable single token; the suffix
+  // alphabet is deliberately NOT restricted (Supabase documents only the
+  // prefix). Generic error, no echo.
+  assert.ok(driver.includes('k.startsWith("sb_secret_")'), "prefix check present");
+  assert.ok(!driver.includes("sb_secret_[A-Za-z0-9_-]"),
+    "no undocumented suffix alphabet restriction");
   assert.ok(driver.includes('fail("Invalid server credential format")'),
     "generic safe rejection message");
   const failCalls = [...driver.matchAll(/fail\(([^)]*)\)/g)].map(m => m[1]);
@@ -171,14 +175,17 @@ test("Stage 5: driver accepts only the modern Secret Key, apikey header only", (
     "no fail() call interpolates the credential");
   assert.ok(!/key\.(slice|substring|substr)|createHash[^\n]*key/.test(driver),
     "no partial display or hashing of the credential");
-  // Behavior of the validation pattern (JS mirror of the driver's check):
-  const valid = k => typeof k === "string" && /^sb_secret_[A-Za-z0-9_-]{10,}$/.test(k);
+  // Behavior of the validation (JS mirror of the driver's check):
+  const valid = k => typeof k === "string" && k.startsWith("sb_secret_")
+    && k.length >= 20 && !/[^\x21-\x7e]/.test(k) && !k.includes("*");
   assert.ok(valid("sb_secret_abcdefghij123456"), "modern Secret Key accepted");
+  assert.ok(valid("sb_secret_Ab.9+ci/QW=~xyz#42"), "safe printable punctuation in suffix accepted");
   assert.ok(!valid(""), "empty rejected");
   assert.ok(!valid("sb_secret_abc***masked***"), "asterisk-masked value rejected");
-  assert.ok(!valid("sb_secret_abc•••def"), "bullet-masked value rejected");
-  assert.ok(!valid("sb_secret_abc…def"), "ellipsis-masked value rejected");
-  assert.ok(!valid("sb_secret_abc def1234"), "whitespace rejected");
+  assert.ok(!valid("sb_secret_abc•••defghijk"), "bullet-masked value rejected");
+  assert.ok(!valid("sb_secret_abc…defghijklm"), "ellipsis-masked value rejected");
+  assert.ok(!valid("sb_secret_abc def1234567"), "whitespace rejected");
+  assert.ok(!valid("sb_secret_abc\tdef1234567"), "TAB rejected");
   assert.ok(!valid("sb_secret_abc\ndef1234"), "line break rejected");
   assert.ok(!valid("sb_secret_abcdef123"), "non-printable rejected");
   assert.ok(!valid("sb_publishable_abcdefghij"), "publishable key rejected");
