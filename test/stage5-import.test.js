@@ -233,6 +233,43 @@ test("Stage 5: forward fix 202607110002 uses typed array_append for all five not
     "202607110001 was not edited");
 });
 
+test("Stage 5: forward fix 202607110003 replaces the invalid objectPath quantifier", () => {
+  const fixPath = path.join(root, "supabase/migrations/202607110003_import_evidence_path_regex_fix.sql");
+  assert.ok(fs.existsSync(fixPath), "forward migration exists");
+  const fix = fs.readFileSync(fixPath, "utf8");
+  const fixCode = fix.split("\n").filter(l => !/^\s*--/.test(l)).join("\n");
+  // Recreates only the classifier.
+  assert.equal((fixCode.match(/create or replace function/g) || []).length, 1, "one function only");
+  assert.ok(fixCode.includes("public._legacy_evidence_kind(p_item jsonb)"), "and it is the classifier");
+  assert.ok(!fixCode.includes("import_legacy_job"), "import_legacy_job not touched");
+  // Old bounded quantifier gone; explicit length check + safe regex present.
+  assert.ok(!fixCode.includes("{2,510}"), "invalid {2,510} quantifier absent");
+  assert.ok(fixCode.includes("char_length(v_path) between 3 and 511"), "explicit length check");
+  assert.ok(fixCode.includes("v_path ~ '^[A-Za-z0-9][A-Za-z0-9/_.-]*$'"), "safe unbounded regex, hyphen last");
+  // Signature/volatility/boundary preserved; binary behavior unchanged.
+  assert.ok(fixCode.includes("returns text") && fixCode.includes("language plpgsql")
+    && fixCode.includes("immutable") && fixCode.includes("set search_path = public"),
+    "signature, return type, language, volatility, search_path unchanged");
+  assert.ok(fixCode.includes("like 'data:%'") && fixCode.includes("return 'binary';")
+    && fixCode.includes("return 'invalid';"), "binary/invalid classification retained");
+  assert.ok(!/grant |revoke /i.test(fixCode), "privileges preserved via CREATE OR REPLACE");
+  // Applied migrations remain unrewritten (defect still in the historical file).
+  assert.ok(migration.includes("{2,510}"), "202607110001 was not edited");
+  const fix2 = fs.readFileSync(
+    path.join(root, "supabase/migrations/202607110002_import_notes_array_fix.sql"), "utf8");
+  assert.ok(!fix2.includes("_legacy_evidence_kind(p_item"), "202607110002 was not edited");
+  // Boundary behavior of the corrected condition (JS mirror of the SQL check):
+  const stable = p => p.length >= 3 && p.length <= 511 && /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(p);
+  assert.ok(stable("a/b"), "3-char valid path accepted");
+  assert.ok(stable("a" + "b".repeat(510)), "511-char valid path accepted");
+  assert.ok(!stable("ab"), "2-char path rejected");
+  assert.ok(!stable("a" + "b".repeat(511)), "512-char path rejected");
+  assert.ok(!stable("jobs/a file.png"), "whitespace rejected");
+  assert.ok(!stable("jobs/a?.png"), "question mark rejected");
+  assert.ok(!stable("/jobs/a.png"), "leading slash rejected");
+  assert.ok(stable("jobs/legacy/fake-evidence-1.png"), "normal managed path accepted");
+});
+
 test("Stage 5: smoke test wraps writes in BEGIN/ROLLBACK and uses no credential", () => {
   assert.ok(/^begin;$/m.test(smoke) && /^rollback;$/m.test(smoke), "write section rolled back");
   assert.ok(smoke.includes("set_config('request.jwt.claims'"),

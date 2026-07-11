@@ -2,9 +2,10 @@
 -- Stage 5 smoke test — structural + behavioral assertions for
 -- supabase/migrations/202607110001_import_legacy_job_stage5.sql
 --
--- Run against STAGING with migrations through 202607110002 applied (the
--- 202607110002 forward fix replaces the note-array assignments flagged by
--- db lint after 202607110001 was applied)
+-- Run against STAGING with migrations through 202607110003 applied
+-- (202607110002 fixed the note-array assignments flagged by db lint;
+-- 202607110003 fixed the objectPath regex quantifier that raised SQLSTATE
+-- 2201B in the first smoke run)
 -- (Supabase SQL Editor, or psql -v ON_ERROR_STOP=1 -f ...). Plain SQL only.
 -- FAKE DATA ONLY. Sections 1–2 are read-only; section 3 wraps every write
 -- validation in BEGIN/ROLLBACK, so nothing persists.
@@ -61,6 +62,20 @@ begin
   end if;
   if src like '%v_notes := v_notes ||%' then
     raise exception 'FAIL: unsafe text-array concatenation still present in import_legacy_job';
+  end if;
+  -- Forward fix 202607110003: the classifier must use the explicit length
+  -- check (the {2,510} quantifier exceeded PostgreSQL's regex bound of 255).
+  select pg_get_functiondef(p.oid) into src from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = '_legacy_evidence_kind';
+  if src is null then
+    raise exception 'FAIL: _legacy_evidence_kind missing';
+  end if;
+  if src not like '%char_length(v_path) between 3 and 511%' then
+    raise exception 'FAIL: classifier lacks the explicit length check (forward fix 202607110003 not installed)';
+  end if;
+  if src like '%{2,510}%' then
+    raise exception 'FAIL: invalid {2,510} regex quantifier still present';
   end if;
   if has_function_privilege('anon',
        'public.import_legacy_job(uuid, jsonb, boolean)', 'EXECUTE') then
@@ -266,6 +281,56 @@ begin
     raise exception 'FAIL: stable objectPath not mapped to job_attachments';
   end if;
   raise notice 'PASS: stable objectPath evidence mapped';
+
+  -- 3f1b. objectPath boundary behavior (forward fix 202607110003): 3 and 511
+  -- chars accepted; 2, 512 and invalid-character paths rejected safely with
+  -- zero partial rows.
+  r := public.import_legacy_job(batch, jsonb_build_object(
+    'id', 'SMK-EV3', 'status', 'open', 'createdAt', '2026-05-01T09:00:00',
+    'attachments', jsonb_build_array(jsonb_build_object('objectPath', 'a/b'))), false);
+  if r->>'status' <> 'ok' then
+    raise exception 'FAIL: 3-char objectPath rejected (%)', r;
+  end if;
+  r := public.import_legacy_job(batch, jsonb_build_object(
+    'id', 'SMK-EV511', 'status', 'open', 'createdAt', '2026-05-01T09:00:00',
+    'attachments', jsonb_build_array(jsonb_build_object(
+      'objectPath', 'a' || repeat('b', 510)))), false);
+  if r->>'status' <> 'ok' then
+    raise exception 'FAIL: 511-char objectPath rejected (%)', r;
+  end if;
+  before_counts := array[(select count(*) from public.jobs)::int,
+                         (select count(*) from public.job_close_pins)::int,
+                         (select count(*) from public.job_timeline)::int,
+                         (select count(*) from public.job_attachments)::int,
+                         (select count(*) from public.audit_logs)::int];
+  r := public.import_legacy_job(batch, jsonb_build_object(
+    'id', 'SMK-EV2', 'status', 'open', 'createdAt', '2026-05-01T09:00:00',
+    'attachments', jsonb_build_array(jsonb_build_object('objectPath', 'ab'))), false);
+  if r->>'status' <> 'failed' or r->>'reason' <> 'EVIDENCE_UNRECOGNIZED' then
+    raise exception 'FAIL: 2-char objectPath not rejected safely (%)', r;
+  end if;
+  r := public.import_legacy_job(batch, jsonb_build_object(
+    'id', 'SMK-EV512', 'status', 'open', 'createdAt', '2026-05-01T09:00:00',
+    'attachments', jsonb_build_array(jsonb_build_object(
+      'objectPath', 'a' || repeat('b', 511)))), false);
+  if r->>'status' <> 'failed' or r->>'reason' <> 'EVIDENCE_UNRECOGNIZED' then
+    raise exception 'FAIL: 512-char objectPath not rejected safely (%)', r;
+  end if;
+  r := public.import_legacy_job(batch, jsonb_build_object(
+    'id', 'SMK-EVBAD', 'status', 'open', 'createdAt', '2026-05-01T09:00:00',
+    'attachments', jsonb_build_array(jsonb_build_object('objectPath', 'jobs/bad path?.png'))), false);
+  if r->>'status' <> 'failed' or r->>'reason' <> 'EVIDENCE_UNRECOGNIZED' then
+    raise exception 'FAIL: invalid-character objectPath not rejected safely (%)', r;
+  end if;
+  after_counts := array[(select count(*) from public.jobs)::int,
+                        (select count(*) from public.job_close_pins)::int,
+                        (select count(*) from public.job_timeline)::int,
+                        (select count(*) from public.job_attachments)::int,
+                        (select count(*) from public.audit_logs)::int];
+  if before_counts <> after_counts then
+    raise exception 'FAIL: rejected objectPath records left partial rows';
+  end if;
+  raise notice 'PASS: objectPath boundary behavior (3/511 ok; 2/512/invalid rejected, zero residue)';
 
   -- 3f2. All five note paths execute without malformed-array errors:
   -- completed job with missing completedAt (defaulted note) plus unresolved
