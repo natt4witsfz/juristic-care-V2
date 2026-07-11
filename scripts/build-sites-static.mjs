@@ -2,6 +2,7 @@
 "use strict";
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +19,31 @@ if (!allowedEnvironments.has(environment)) {
   console.error("Environment must be preproduction or production");
   process.exit(1);
 }
+
+function failPromotionGuard() {
+  console.error("Production promotion requires a valid Bit code.");
+  process.exit(1);
+}
+
+function verifyProductionPromotionGuard() {
+  if (environment !== "production") return;
+  const expectedHash = process.env.PRODUCTION_PROMOTION_BIT_HASH || "";
+  const bitCode = process.env.PRODUCTION_PROMOTION_BIT_CODE || "";
+  const confirmation = process.env.PRODUCTION_PROMOTION_CONFIRM || "";
+
+  if (!/^[a-f0-9]{64}$/i.test(expectedHash)) failPromotionGuard();
+  if (!bitCode || /[\r\n\t]/.test(bitCode)) failPromotionGuard();
+  if (confirmation !== "PROMOTE_TO_PRODUCTION") failPromotionGuard();
+
+  const actualHash = crypto.createHash("sha256").update(bitCode, "utf8").digest("hex");
+  const expected = Buffer.from(expectedHash.toLowerCase(), "hex");
+  const actual = Buffer.from(actualHash, "hex");
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+    failPromotionGuard();
+  }
+}
+
+verifyProductionPromotionGuard();
 
 const files = [
   "index.html",
@@ -51,6 +77,7 @@ fs.mkdirSync(path.dirname(hostingOut), { recursive: true });
 fs.copyFileSync(hostingConfig, hostingOut);
 
 const worker = `const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
