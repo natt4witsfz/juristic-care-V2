@@ -2,7 +2,9 @@
 -- Stage 5 smoke test — structural + behavioral assertions for
 -- supabase/migrations/202607110001_import_legacy_job_stage5.sql
 --
--- Run against STAGING with migrations through 202607110001 applied
+-- Run against STAGING with migrations through 202607110002 applied (the
+-- 202607110002 forward fix replaces the note-array assignments flagged by
+-- db lint after 202607110001 was applied)
 -- (Supabase SQL Editor, or psql -v ON_ERROR_STOP=1 -f ...). Plain SQL only.
 -- FAKE DATA ONLY. Sections 1–2 are read-only; section 3 wraps every write
 -- validation in BEGIN/ROLLBACK, so nothing persists.
@@ -44,6 +46,21 @@ begin
   if not has_function_privilege('service_role',
        'public.import_legacy_job(uuid, jsonb, boolean)', 'EXECUTE') then
     raise exception 'FAIL: service_role cannot execute import_legacy_job';
+  end if;
+  -- Forward fix 202607110002: all five note appends must be explicitly typed
+  -- (db lint 22P02 "malformed array literal" regression guard).
+  select pg_get_functiondef(p.oid) into src from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'import_legacy_job';
+  if src not like '%array_append(v_notes, ''completed_at_defaulted_to_updated_at''::text)%'
+     or src not like '%array_append(v_notes, ''unresolved_reporter''::text)%'
+     or src not like '%array_append(v_notes, ''unresolved_assignee''::text)%'
+     or src not like '%array_append(v_notes, ''unresolved_assigned_by''::text)%'
+     or src not like '%array_append(v_notes, ''unresolved_room''::text)%' then
+    raise exception 'FAIL: a note path does not use array_append (forward fix 202607110002 not installed)';
+  end if;
+  if src like '%v_notes := v_notes ||%' then
+    raise exception 'FAIL: unsafe text-array concatenation still present in import_legacy_job';
   end if;
   if has_function_privilege('anon',
        'public.import_legacy_job(uuid, jsonb, boolean)', 'EXECUTE') then
@@ -249,6 +266,33 @@ begin
     raise exception 'FAIL: stable objectPath not mapped to job_attachments';
   end if;
   raise notice 'PASS: stable objectPath evidence mapped';
+
+  -- 3f2. All five note paths execute without malformed-array errors:
+  -- completed job with missing completedAt (defaulted note) plus unresolved
+  -- reporter, assignee, assignedBy and room (no roomNo) in one record.
+  r := public.import_legacy_job(batch, '{
+    "id": "SMK-NOTES", "status": "done",
+    "reporter": "no-such-user-a", "assignee": "no-such-user-b",
+    "assignedBy": "no-such-user-c", "roomNo": "NO-SUCH-ROOM-XYZ",
+    "createdAt": "2026-05-01T09:00:00", "updatedAt": "2026-05-02T10:00:00"
+  }'::jsonb, false);
+  if r->>'status' <> 'ok' then
+    raise exception 'FAIL: five-note record errored (%)', r;
+  end if;
+  if r->>'reason' not like '%completed_at_defaulted_to_updated_at%'
+     or r->>'reason' not like '%unresolved_reporter%'
+     or r->>'reason' not like '%unresolved_assignee%'
+     or r->>'reason' not like '%unresolved_assigned_by%'
+     or r->>'reason' not like '%unresolved_room%' then
+    raise exception 'FAIL: not all five notes recorded (%)', r;
+  end if;
+  if not exists (select 1 from public.jobs where id = r->>'target_id'
+                   and completed_at = timestamptz '2026-05-02 10:00:00 Asia/Bangkok'
+                   and reported_by is null and assignee_id is null
+                   and assigned_by is null and room_id is null) then
+    raise exception 'FAIL: defaulted completed_at or NULL relationships wrong';
+  end if;
+  raise notice 'PASS: all five note paths execute (no malformed-array error)';
 
   -- 3g. Invalid status rejected safely; pseudo-jobs excluded.
   r := public.import_legacy_job(batch, '{"id":"SMK-BAD","status":"nonsense","createdAt":"2026-05-01T09:00:00"}'::jsonb, false);

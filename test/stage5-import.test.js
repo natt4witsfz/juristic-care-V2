@@ -200,6 +200,39 @@ test("Stage 5: fake sample covers every mandated case with no real data", () => 
   assert.ok(/FAKE|fake|ปลอม/.test(text), "sample explicitly marked fake");
 });
 
+test("Stage 5: forward fix 202607110002 uses typed array_append for all five notes", () => {
+  const fixPath = path.join(root, "supabase/migrations/202607110002_import_notes_array_fix.sql");
+  assert.ok(fs.existsSync(fixPath), "forward migration exists");
+  const fix = fs.readFileSync(fixPath, "utf8");
+  const fixCode = fix.split("\n").filter(l => !/^\s*--/.test(l)).join("\n");
+  for (const note of ["completed_at_defaulted_to_updated_at", "unresolved_reporter",
+                      "unresolved_assignee", "unresolved_assigned_by", "unresolved_room"]) {
+    assert.ok(fixCode.includes(`v_notes := array_append(v_notes, '${note}'::text);`),
+      `${note} uses explicitly typed array_append`);
+  }
+  // The unsafe text-array pattern must not remain in the EFFECTIVE body
+  // (202607110002 is the last definition of import_legacy_job).
+  assert.ok(!/v_notes := v_notes \|\|/.test(fixCode),
+    "no unsafe v_notes || '...' assignment remains in the effective body");
+  // The valid jsonb concatenation is unchanged.
+  assert.ok(fixCode.includes("v_stable_refs := v_stable_refs || jsonb_build_array(v_item);"),
+    "jsonb concatenation untouched");
+  // Public signature and security boundary unchanged.
+  assert.ok(fixCode.includes("create or replace function public.import_legacy_job(")
+    && fixCode.includes("p_import_batch_id uuid,")
+    && fixCode.includes("p_dry_run boolean default true")
+    && fixCode.includes("returns jsonb")
+    && fixCode.includes("security definer")
+    && fixCode.includes("set search_path = public")
+    && fixCode.includes("coalesce(auth.role(), '') = 'service_role'"),
+    "signature, SECURITY DEFINER, search_path and authorization unchanged");
+  assert.ok(!/grant |revoke /i.test(fixCode), "grants preserved via CREATE OR REPLACE (no ACL change)");
+  // Applied 202607110001 must not have been rewritten (defect still in the
+  // historical file, superseded at runtime).
+  assert.ok(migration.includes("v_notes := v_notes || 'completed_at_defaulted_to_updated_at'"),
+    "202607110001 was not edited");
+});
+
 test("Stage 5: smoke test wraps writes in BEGIN/ROLLBACK and uses no credential", () => {
   assert.ok(/^begin;$/m.test(smoke) && /^rollback;$/m.test(smoke), "write section rolled back");
   assert.ok(smoke.includes("set_config('request.jwt.claims'"),
