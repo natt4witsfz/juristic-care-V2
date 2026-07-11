@@ -88,6 +88,16 @@ PIN material (`create_job` strips `closePin` before persisting;
 
 **Errors:** none — unauthenticated/unknown callers receive an empty set.
 
+**Stage 4 status:** the frontend now consumes the four write RPCs
+(`create_job`, `assign_job`, `update_job_status`, `verify_job_completion`)
+through mode-switched facades in app.js; after every successful mutation the
+cache refreshes only through this read RPC. The frontend maps its `closePin`
+form field to the contract's `pin` input, isolates the one-time `closePin`
+output from the job object, and **blocks creation-time attachments** in
+Supabase mode (the contract has no evidence parameter on `create_job` —
+documented limitation and future forward-migration ticket; see
+`docs/audit/STAGE-4-GATE-REPORT.md` §6).
+
 From Stage 3 this is the **only** client job-read path. **Stage 3 status:**
 the frontend consumes it via `JuristicSupabase.listJobs()` →
 `loadJobsFromSupabase()`; the in-memory `jobs` array is a render cache

@@ -25,7 +25,8 @@ test.todo("Stage 2: get_app_bootstrap never serves jobs from app_snapshots");
 // dry-run, not claimed here.
 
 // ---- Stage 4 — frontend record-level writes ----
-test.todo("Stage 4: createJob/assignJob/updateJobStatus/verifyCompletion call RPCs");
+// Activated: "createJob/assignJob/updateJobStatus/verifyCompletion call RPCs"
+// is now covered by test/stage4-write-path.test.js (source-level guards).
 test.todo("Stage 4: a WebApp-created job appears after reload in another session");
 
 // ---- Stage 5 — legacy import & reconciliation ----

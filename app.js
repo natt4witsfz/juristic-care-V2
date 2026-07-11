@@ -920,7 +920,9 @@ function normalizeJob(job) {
   if (job.mainCategory === "common") job.sharePublic = true;
   job.subStatus = job.subStatus || "";
   job.note = job.note || "";
-  job.closePin = job.closePin || generateClosePin();
+  // Stage 4: never fabricate a close PIN in Supabase mode — PINs live only as
+  // bcrypt hashes server-side; the pin-card falls back to its masked variant.
+  if (!supabaseEnabled()) job.closePin = job.closePin || generateClosePin();
   job.timeline = job.timeline || [];
   job.statusUpdates = job.statusUpdates || [];
   job.createdAt = job.createdAt || `${job.date || job.jobDate}T${job.time || "00:00"}:00`;
@@ -1008,7 +1010,157 @@ function canVerifyCompletion(user, job) {
   if (!user || !job || job.subStatus !== "waiting_owner_or_admin_verification") return false;
   return user.role === "admin" || user.isCoAdmin || job.assignedBy === user.id || (user.role === "resident" && getText(job.roomNo || job.room) === user.room);
 }
-function createJob(payload) {
+// ---------------------------------------------------------------------------
+// Stage 4: job mutations. In Supabase mode every mutation goes through the
+// approved server RPC and the jobs cache is refreshed ONLY via
+// loadJobsFromSupabase() (list_jobs_for_current_user). RPC return objects are
+// never merged into the cache. Demo mode keeps the unchanged *Local bodies.
+// ---------------------------------------------------------------------------
+const jobMutationInFlight = { create: false, assign: false, update: false, verify: false };
+function jobMutationErrorText(error) {
+  const detail = String(error?.message || error || "");
+  if (detail.includes("EVIDENCE_UPLOAD_FAILED")) return "อัปโหลดรูปหลักฐานไม่สำเร็จ กรุณาลองใหม่ / Photo upload failed; please try again";
+  if (detail.includes("PIN_INVALID")) return "PIN ไม่ถูกต้อง / Invalid close PIN";
+  if (detail.includes("EVIDENCE_REQUIRED")) return "กรุณาแนบรูปหลักฐานตามที่กำหนด / Required photo evidence is missing";
+  if (detail.includes("ILLEGAL_TRANSITION")) return "ไม่สามารถเปลี่ยนเป็นสถานะนี้ได้ / This status change is not allowed";
+  if (detail.includes("FORBIDDEN")) return "บัญชีนี้ไม่มีสิทธิ์ดำเนินการนี้ / This account is not allowed to perform this action";
+  if (detail.includes("AUTH_REQUIRED")) return "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ / Session expired; please sign in again";
+  if (detail.includes("INVALID_INPUT")) return "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบแบบฟอร์ม / Invalid input; please review the form";
+  return "บันทึกงานไม่สำเร็จ กรุณาลองใหม่ / Job save failed; please try again";
+}
+// Map Storage upload results to the approved evidence payload shape. A string
+// (local dataURL fallback) or missing path means the upload did NOT reach
+// Storage — fail closed BEFORE the RPC instead of sending invalid evidence.
+function mapEvidenceAttachments(attachments = []) {
+  return (attachments || []).map(item => {
+    if (!item || typeof item === "string" || !item.path) throw new Error("EVIDENCE_UPLOAD_FAILED");
+    return {
+      objectPath: item.path,
+      originalName: item.originalName || "",
+      mimeType: item.mimeType || "",
+      sizeBytes: item.size || 0
+    };
+  });
+}
+async function createJob(payload) {
+  if (!supabaseEnabled()) return createJobLocal(payload);
+  if (jobMutationInFlight.create) return null;
+  jobMutationInFlight.create = true;
+  try {
+    const result = await supabaseProvider.createJob({
+      title: payload.title || payload.issueDescription,
+      issueDescription: payload.issueDescription,
+      roomNo: payload.roomNo,
+      building: payload.building,
+      floor: payload.floor,
+      contactName: payload.contactName,
+      contactPhone: payload.contactPhone,
+      note: payload.note,
+      slaNote: payload.slaNote,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      mainCategory: payload.mainCategory,
+      category: payload.category,
+      priority: payload.priority,
+      jobDate: payload.jobDate,
+      dueDate: payload.dueDate,
+      sharePublic: payload.mainCategory === "common",
+      assignee: payload.assignee || "",
+      idempotencyKey: crypto.randomUUID?.() || `idem-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    });
+    // One-time close PIN: split away from the job object at the RPC boundary.
+    // It is shown once to the creator and never cached, stored or logged; the
+    // rest of the RPC result is discarded — the cache refreshes via the read RPC.
+    const oneTimeClosePin = result?.closePin || "";
+    const createdJobId = result?.id || "";
+    await loadJobsFromSupabase();
+    renderAll();
+    if (oneTimeClosePin) {
+      alert(currentLang === "th"
+        ? `PIN ปิดงาน ${createdJobId}: ${oneTimeClosePin}\nแสดงครั้งเดียวเท่านั้น กรุณาจดบันทึกและส่งต่อให้ผู้เกี่ยวข้อง`
+        : `Close PIN for ${createdJobId}: ${oneTimeClosePin}\nShown once only — note it down and share with the room contact.`);
+    }
+    return { id: createdJobId };
+  } catch (error) {
+    console.warn("create_job RPC failed");
+    showToast(jobMutationErrorText(error));
+    return null;
+  } finally {
+    jobMutationInFlight.create = false;
+  }
+}
+async function assignJob(jobId, assigneeId, extra = {}) {
+  if (!supabaseEnabled()) return assignJobLocal(jobId, assigneeId, extra);
+  if (jobMutationInFlight.assign) return null;
+  jobMutationInFlight.assign = true;
+  try {
+    await supabaseProvider.assignJob(jobId, assigneeId, {
+      category: extra.category,
+      mainCategory: extra.mainCategory,
+      note: extra.note
+    });
+    await loadJobsFromSupabase();
+    renderAll();
+    return { id: jobId };
+  } catch (error) {
+    console.warn("assign_job RPC failed");
+    showToast(jobMutationErrorText(error));
+    return null;
+  } finally {
+    jobMutationInFlight.assign = false;
+  }
+}
+async function updateJobStatus(jobId, payload) {
+  if (!supabaseEnabled()) return updateJobStatusLocal(jobId, payload);
+  if (jobMutationInFlight.update) return { errors: ["กำลังบันทึกอยู่ กรุณารอสักครู่ / Save already in progress; please wait"] };
+  jobMutationInFlight.update = true;
+  try {
+    // Evidence mapping happens BEFORE the RPC; invalid/failed uploads abort here.
+    const evidence = mapEvidenceAttachments(payload.attachments);
+    const rpcPayload = {
+      status: payload.status,
+      pin: payload.closePin, // server contract field is `pin`
+      noPinAvailable: !!payload.noPinAvailable,
+      noPinReason: payload.noPinReason,
+      inspectionDate: payload.inspectionDate,
+      updateDate: payload.updateDate,
+      cause: payload.cause,
+      solution: payload.solution,
+      note: payload.note,
+      completedWorkDate: payload.completedWorkDate,
+      attachments: evidence
+    };
+    // DB-03: the key is included only when a value is present.
+    if (payload.nextUpdateDate) rpcPayload.nextUpdateDate = payload.nextUpdateDate;
+    await supabaseProvider.updateJobStatus(jobId, rpcPayload);
+    await loadJobsFromSupabase();
+    renderAll();
+    return { errors: [] };
+  } catch (error) {
+    console.warn("update_job_status RPC failed");
+    return { errors: [jobMutationErrorText(error)] };
+  } finally {
+    jobMutationInFlight.update = false;
+  }
+}
+async function verifyCompletion(jobId) {
+  if (!supabaseEnabled()) return verifyCompletionLocal(jobId);
+  if (jobMutationInFlight.verify) return false;
+  jobMutationInFlight.verify = true;
+  try {
+    await supabaseProvider.verifyCompletion(jobId);
+    await loadJobsFromSupabase();
+    renderAll();
+    return true;
+  } catch (error) {
+    console.warn("verify_job_completion RPC failed");
+    showToast(jobMutationErrorText(error));
+    return false;
+  } finally {
+    jobMutationInFlight.verify = false;
+  }
+}
+function createJobLocal(payload) {
   const assignee = payload.assignee ? getUser(payload.assignee) : null;
   const sequence = String(jobs.length + 1).padStart(3, "0");
   const job = normalizeJob({
@@ -1063,7 +1215,7 @@ function createJob(payload) {
   addLog("WEBAPP_JOB_CREATED", `New job ${job.id}${assignee ? ` assigned to ${getUserName(assignee)}` : " sent to Pool"}`);
   return job;
 }
-function assignJob(jobId, assigneeId, extra = {}) {
+function assignJobLocal(jobId, assigneeId, extra = {}) {
   const job = normalizeJob(jobs.find(item => item.id === jobId));
   const assignee = getUser(assigneeId);
   if (!job || !assignee) return null;
@@ -1110,7 +1262,7 @@ function validateStatusUpdate(job, payload) {
   if (payload.attachments?.some(file => file.size && file.size > 5 * 1024 * 1024)) errors.push("รูปภาพต้องมีขนาดไม่เกิน 5MB ต่อไฟล์");
   return errors;
 }
-function updateJobStatus(jobId, payload) {
+function updateJobStatusLocal(jobId, payload) {
   const job = normalizeJob(jobs.find(item => item.id === jobId));
   if (!job) return { errors: ["ไม่พบงาน"] };
   const errors = validateStatusUpdate(job, payload);
@@ -1157,7 +1309,7 @@ function updateJobStatus(jobId, payload) {
   addLog("JOB_UPDATED", `${job.id} updated to ${statusLabel(job.status, job.subStatus)}`);
   return { job, errors: [] };
 }
-function verifyCompletion(jobId) {
+function verifyCompletionLocal(jobId) {
   const job = normalizeJob(jobs.find(item => item.id === jobId));
   if (!canVerifyCompletion(currentUser, job)) return false;
   const fromStatus = job.status;
@@ -4665,6 +4817,10 @@ function requestOrDeleteUser(userId) {
   const user = getUser(userId);
   if (!user || user.role === "admin") return;
   if (currentUser.role === "admin") return deleteUserNow(userId);
+  // Stage 4: the delete-request ticket is a local pseudo-job, not a job-domain
+  // record. In Supabase mode it is blocked BEFORE any jobs mutation — no
+  // temporary state, no false success.
+  if (supabaseEnabled()) return showToast("ฟังก์ชันคำขอลบผู้ใช้ยังไม่รองรับในโหมด Supabase / User-deletion request workflow is not yet supported in Supabase mode");
   const requestId = `DEL-${Date.now()}`;
   jobs.unshift({
     id: requestId,
@@ -4692,6 +4848,9 @@ function requestOrDeleteUser(userId) {
 function deleteUserNow(userId, requestJobId = "") {
   const user = getUser(userId);
   if (!user || user.role === "admin") return;
+  // Stage 4: approving a delete-request pseudo-job mutates the jobs array —
+  // blocked in Supabase mode before any mutation (no such job can exist there).
+  if (requestJobId && supabaseEnabled()) return showToast("ฟังก์ชันอนุมัติคำขอลบผู้ใช้ยังไม่รองรับในโหมด Supabase / Delete-request approval is not yet supported in Supabase mode");
   exportUserJobsCsv(user);
   if (!deletedUserIds.includes(userId)) deletedUserIds.push(userId);
   saveDeletedUsers();
@@ -5113,10 +5272,14 @@ document.addEventListener("click", e => {
     deleteUserNow(confirmDelete.dataset.confirmDelete, confirmDelete.dataset.requestJob);
   }
   const verifyButton = e.target.closest("[data-verify-completion]");
-  if (verifyButton && verifyCompletion(verifyButton.dataset.verifyCompletion)) {
-    $("#jobModal").classList.add("hidden");
-    renderAll();
-    showToast("ยืนยันปิดงานเรียบร้อยแล้ว");
+  if (verifyButton) {
+    // verifyCompletion is async in Supabase mode; resolve before showing success.
+    Promise.resolve(verifyCompletion(verifyButton.dataset.verifyCompletion)).then(ok => {
+      if (!ok) return; // fail closed: error toast already shown
+      $("#jobModal").classList.add("hidden");
+      renderAll();
+      showToast("ยืนยันปิดงานเรียบร้อยแล้ว");
+    });
   }
   if (e.target.closest("#addUserBtn")) openUserModal();
   if (e.target.closest("#accountMenuBtn")) $("#accountMenu").classList.toggle("hidden");
@@ -5374,7 +5537,8 @@ document.addEventListener("submit", async e => {
         extra = { hasScheduleConflict: true, conflictConfirmedAt: new Date().toISOString(), conflictConfirmedBy: currentUser.id };
       }
     }
-    assignJob(job.id, data.assignee, { category: data.category, mainCategory: data.mainCategory, dueDate: data.dueDate, slaNote: data.slaNote, ...extra });
+    const assigned = await assignJob(job.id, data.assignee, { category: data.category, mainCategory: data.mainCategory, dueDate: data.dueDate, slaNote: data.slaNote, ...extra });
+    if (supabaseEnabled() && !assigned) return; // fail closed: error toast already shown
     $("#jobModal").classList.add("hidden"); renderAll(); showToast(t("toast.assigned"));
   }
   const updateForm = e.target.closest("[data-update-job]");
@@ -5386,7 +5550,7 @@ document.addEventListener("submit", async e => {
     if (files.length > 3) return showToast("แนบรูปได้สูงสุด 3 รูป");
     if (files.some(file => file.size > 5 * 1024 * 1024)) return showToast("รูปภาพต้องมีขนาดไม่เกิน 5MB ต่อไฟล์");
     const attachments = await Promise.all(files.map(file => fileToDataUrl(file, "job", job.id)));
-    const result = updateJobStatus(job.id, {
+    const result = await updateJobStatus(job.id, {
       status: data.status,
       inspectionDate: data.inspectionDate,
       updateDate: data.updateDate,
@@ -5558,6 +5722,12 @@ $("#createJobForm").addEventListener("submit", async e => {
   const data = Object.fromEntries(new FormData(form));
   if (data.endTime && !data.startTime) return showToast("ถ้ากรอกเวลาสิ้นสุด ต้องกรอกเวลาเริ่มงานด้วย");
   const files = getPhotoChoiceFiles(form, "initialAttachments");
+  // Stage 4 (F4): creation-time attachments are not yet supported in Supabase
+  // mode (create_job has no evidence parameter). Block BEFORE any upload so no
+  // orphaned Storage object can exist; photos are added via a status update.
+  if (supabaseEnabled() && files.length) {
+    return showToast("โหมด Supabase ยังไม่รองรับการแนบรูปตอนสร้างงาน กรุณาสร้างงานก่อน แล้วเพิ่มรูปผ่านการอัปเดตสถานะ / Attachments at job creation are not yet supported; create the job first, then add photos via a status update");
+  }
   if (files.length > 3) return showToast("แนบรูปภาพได้สูงสุด 3 รูป");
   if (files.some(file => file.size > 5 * 1024 * 1024)) return showToast("รูปภาพต้องมีขนาดไม่เกิน 5MB ต่อไฟล์");
   let conflictExtra = {};
@@ -5573,7 +5743,8 @@ $("#createJobForm").addEventListener("submit", async e => {
   }
   const draftJobId = `draft-${Date.now()}`;
   const attachments = await Promise.all(files.map(file => fileToDataUrl(file, "job", draftJobId)));
-  createJob({ ...data, initialAttachments: attachments, ...conflictExtra });
+  const created = await createJob({ ...data, initialAttachments: attachments, ...conflictExtra });
+  if (supabaseEnabled() && !created) return; // fail closed: error toast already shown
   form.reset();
   $("#createModal").classList.add("hidden");
   renderAll();
