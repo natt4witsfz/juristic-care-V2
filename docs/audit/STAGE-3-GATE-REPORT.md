@@ -4,8 +4,10 @@
 > Baseline: Stage 2 closed and tagged `stage-2-staging-verified` (commit
 > `c6ac27c`). Per the stage-gate protocol in
 > `docs/audit/14-strategy-b-rebuild-plan.md` §7.
-> **Hard stop — Stage 4 not started. No migration created or applied. Form
-> trigger disabled. `SUPABASE_ENABLED` remains false.**
+> **Status: STAGE 3 GATE APPROVED — staging browser validation completed
+> 2026-07-11 (see §10). Hard stop — Stage 4 not started. No migration
+> created or applied. Form trigger disabled. `SUPABASE_ENABLED` remains
+> false.**
 
 ## 1. Canonical frontend job read path (decision)
 
@@ -126,7 +128,39 @@ disabled; Stage 4 not started.
 (or revert the Stage 3 commit once created) restores the exact verified
 Stage 2 tree; nothing was applied or deployed anywhere.
 
-## 9. Approval request
+## 10. Staging browser validation (2026-07-11) — GATE APPROVED
+
+Stage 3 was validated in a real browser against the **staging** Supabase
+project, using only a **temporary uncommitted local config override** with
+the Publishable Key (per §6's documented method). Evidence:
+
+1. Supabase Auth login succeeded with the fake staging account
+   `stage3admin`.
+2. The relational Supabase job "Stage 3 Relational Read Test" appeared in
+   the frontend through the Stage 3 read path
+   (`list_jobs_for_current_user` → `listJobs()` → `loadJobsFromSupabase()`).
+3. Two hard reloads showed exactly one job — no duplication, no merge.
+4. A second Incognito browser session showed the same Supabase job after
+   login (cross-session visibility).
+5. Logout and login again showed exactly one job and **no local fallback
+   data**.
+6. No frontend job write action was performed (Stage 3 is read-only).
+7. The local server was stopped, `config.js` was restored, and `git status`
+   is clean; no URL, Publishable Key, Secret Key, service_role key,
+   password, or credential was committed.
+
+**Not separately exercised in this browser session** (stated for accuracy):
+the live failing-endpoint retry behavior and a manual stale-`app_snapshots`
+injection. Those areas remain covered by the automated source-level guards
+in `test/stage3-read-path.test.js` ("a failed read fails closed", bounded
+retry markers, job-blind `applyBackendSnapshot`) — design-level evidence,
+not live observation.
+
+**The Stage 3 gate is approved**; this state is tagged
+`stage-3-staging-verified`. Stage 4 (frontend record-level write path) does
+not begin without explicit approval.
+
+## 9. Approval request (historical — superseded by §10)
 
 **Go/no-go:** (1) approve one commit of the Stage 3 deliverables to
 `feat/stage-3-frontend-relational-read`; (2) approve the Stage 3 staging
