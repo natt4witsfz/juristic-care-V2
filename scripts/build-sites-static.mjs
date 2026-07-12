@@ -66,6 +66,10 @@ for (const file of files) {
     const html = fs.readFileSync(from, "utf8");
     const banner = `<div style="position:fixed;left:0;right:0;top:0;z-index:99999;background:#7c2d12;color:#fff;font:600 13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;text-align:center;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.16)">PRE-PRODUCTION - สำหรับทดสอบก่อนขึ้น Production</div><style>body{padding-top:34px}</style>`;
     fs.writeFileSync(to, html.replace("<body>", `<body>${banner}`), "utf8");
+  } else if (file === "config.js" && environment === "preproduction") {
+    const config = fs.readFileSync(from, "utf8")
+      .replace("DEV_SHOW_PROFILE_PIN: false", "DEV_SHOW_PROFILE_PIN: true");
+    fs.writeFileSync(to, config, "utf8");
   } else {
     fs.copyFileSync(from, to);
   }

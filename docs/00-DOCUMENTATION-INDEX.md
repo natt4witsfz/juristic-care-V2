@@ -24,6 +24,8 @@
 ## Focused Work-System Docs
 
 - `17-WORK-ASSIGNMENT-DETAIL-UX-SPEC.md` - current-state spec for work assignment, job detail, assignee workflow, and related UX/UI risks.
+- `PROFILE-PIN-INTERFACE-ONBOARDING.md` - post-login profile selection, 6-digit PIN verification, and Full/Compact interface onboarding.
+- `ASSIGNMENT-SYSTEM-DESIGN-UX.md` - assignment system design, workflow, UX/UI, and pre-production checklist.
 
 ## Source Of Truth
 

@@ -217,6 +217,70 @@
     return data;
   }
 
+  async function listAccountProfiles() {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("list_account_profiles");
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
+  async function createAccountProfile(profileType, displayName, roomNumber = "") {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("create_account_profile", {
+      p_profile_type: profileType,
+      p_display_name: displayName,
+      p_room_number: roomNumber
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function selectAccountProfile(profileId) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("select_account_profile", {
+      p_profile_id: profileId
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function issueProfilePinChallenge(profileId, sessionId) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("issue_profile_pin_challenge", {
+      p_profile_id: profileId,
+      p_session_id: sessionId
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function verifyProfilePinChallenge(profileId, sessionId, pin) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("verify_profile_pin_challenge", {
+      p_profile_id: profileId,
+      p_session_id: sessionId,
+      p_pin: pin
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveInterfacePreference(profileId, interfaceMode) {
+    const supabaseClient = getClient();
+    if (!supabaseClient) return null;
+    const { data, error } = await supabaseClient.rpc("save_interface_preference", {
+      p_profile_id: profileId,
+      p_interface_mode: interfaceMode
+    });
+    if (error) throw error;
+    return data;
+  }
+
   function safeFileName(name = "file") {
     return String(name)
       .normalize("NFKD")
@@ -286,6 +350,12 @@
     listLogs,
     savePermissions,
     saveSidebarOrder,
+    listAccountProfiles,
+    createAccountProfile,
+    selectAccountProfile,
+    issueProfilePinChallenge,
+    verifyProfilePinChallenge,
+    saveInterfacePreference,
     uploadJobAttachment,
     uploadAnnouncementFile,
     uploadProfileImage,

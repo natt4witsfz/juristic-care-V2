@@ -12,8 +12,8 @@ const I18N = {
     "auth.loginSubtitle": "เข้าสู่ระบบเพื่อดูสถานะงานของห้องคุณ",
     "auth.setupTitle": "ตั้งค่าบัญชีครั้งแรก",
     "auth.setupSubtitle": "กรอกเลขห้องและตั้งรหัสผ่านอย่างน้อย 4 ตัว",
-    "auth.roomLabel": "เลขห้อง",
-    "auth.roomPlaceholder": "เช่น A-1204",
+    "auth.roomLabel": "User ID",
+    "auth.roomPlaceholder": "เช่น ADMIN หรือ A-1204",
     "auth.passwordLabel": "รหัสผ่าน",
     "auth.passwordPlaceholder": "กรอกรหัสผ่าน",
     "auth.togglePassword": "แสดงหรือซ่อนรหัสผ่าน",
@@ -131,7 +131,7 @@ const I18N = {
     "empty.noResults": "ไม่พบงานตามเงื่อนไข",
     "empty.sub": "รายการใหม่จะแสดงที่นี่โดยอัตโนมัติ",
     "toast.passwordSet": "ตั้งรหัสผ่านเรียบร้อยแล้ว",
-    "toast.loginFailed": "เลขห้องหรือรหัสผ่านไม่ถูกต้อง (ทดลอง ADMIN / STAFF-01 / STAFF-02 / A-0201 ใช้รหัส 1234)",
+    "toast.loginFailed": "User ID หรือรหัสผ่านไม่ถูกต้อง",
     "toast.claimed": "รับงาน {id} เรียบร้อยแล้ว",
     "toast.statusUpdated": "อัปเดตสถานะงานแล้ว",
     "toast.created": "สร้างงานใหม่เรียบร้อยแล้ว",
@@ -184,8 +184,8 @@ const I18N = {
     "auth.loginSubtitle": "Sign in to track your room's work status",
     "auth.setupTitle": "Set up your account",
     "auth.setupSubtitle": "Enter your room number and create a password of at least 4 characters",
-    "auth.roomLabel": "Room number",
-    "auth.roomPlaceholder": "e.g. A-1204",
+    "auth.roomLabel": "User ID",
+    "auth.roomPlaceholder": "e.g. ADMIN or A-1204",
     "auth.passwordLabel": "Password",
     "auth.passwordPlaceholder": "Enter password",
     "auth.togglePassword": "Show or hide password",
@@ -303,7 +303,7 @@ const I18N = {
     "empty.noResults": "No jobs match your filters",
     "empty.sub": "New items will appear here automatically",
     "toast.passwordSet": "Password has been set",
-    "toast.loginFailed": "Room number or password is incorrect (try ADMIN / STAFF-01 / STAFF-02 / A-0201 with 1234)",
+    "toast.loginFailed": "User ID or password is incorrect",
     "toast.claimed": "Job {id} has been claimed",
     "toast.statusUpdated": "Job status updated",
     "toast.created": "New job created",
@@ -2430,12 +2430,16 @@ function renderInterfacePicker() {
   `).join("");
 }
 
-function openInterfacePicker() {
+function openInterfacePicker(force = false) {
   if (!currentUser) return;
   if (currentUser.role === "resident" && window.__jcResidentProfileVerified !== true) return;
   if (!$("#profileGate")?.classList.contains("hidden")) return;
   ensureInterfacePicker();
   currentInterfaceMode = localStorage.getItem(compactModeStorageKey()) || "full";
+  if (!force && localStorage.getItem(compactModeStorageKey())) {
+    selectInterfaceMode(currentInterfaceMode);
+    return;
+  }
   renderInterfacePicker();
   $("#interfacePickerModal")?.classList.remove("hidden");
 }
@@ -2467,6 +2471,24 @@ function selectInterfaceMode(mode) {
   if (!currentUser) return;
   currentInterfaceMode = mode === "compact" ? "compact" : "full";
   localStorage.setItem(compactModeStorageKey(), currentInterfaceMode);
+  try {
+    const session = JSON.parse(sessionStorage.getItem("juristicOnboardingSession") || "{}");
+    session.interfaceMode = currentInterfaceMode === "compact" ? "COMPACT" : "FULL";
+    session.onboardingState = "APPLICATION_READY";
+    session.lastActivityAt = new Date().toISOString();
+    sessionStorage.setItem("juristicOnboardingSession", JSON.stringify(session));
+  } catch {
+    sessionStorage.setItem("juristicOnboardingSession", JSON.stringify({
+      accountId: currentUser.id,
+      selectedProfileId: sessionStorage.getItem("juristicActiveProfile") || "",
+      selectedProfileType: window.activeProfile?.profileType || "",
+      profilePinVerified: window.__jcResidentProfileVerified === true,
+      interfaceMode: currentInterfaceMode === "compact" ? "COMPACT" : "FULL",
+      onboardingState: "APPLICATION_READY",
+      authenticatedAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString()
+    }));
+  }
   $("#interfacePickerModal")?.classList.add("hidden");
   document.body.classList.toggle("interface-compact", currentInterfaceMode === "compact");
   ensureCompactApp();
@@ -4897,14 +4919,16 @@ $("#loginForm").addEventListener("submit", async e => {
 });
 $("#setupToggle").addEventListener("click", () => { setupMode = !setupMode; translateStaticDom(); });
 $("#togglePassword").addEventListener("click", () => $("#password").type = $("#password").type === "password" ? "text" : "password");
-$("#logoutBtn").addEventListener("click", async () => {
+window.__jcLogout = async function () {
   if (supabaseEnabled()) {
     try { await supabaseProvider.signOut(); } catch (error) { console.warn("Supabase sign out failed", error); }
   }
+  if (typeof window.__jcClearOnboarding === "function") window.__jcClearOnboarding();
   sessionStorage.removeItem("juristicUser");
   sessionStorage.removeItem("juristicAdminPreviewOriginal");
   location.reload();
-});
+};
+$("#logoutBtn").addEventListener("click", () => window.__jcLogout());
 $("#menuBtn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
 $("#mobileCreateJobBtn").addEventListener("click", () => {
   if (!hasActionPermission("createJob")) return showToast(currentLang === "th" ? "บัญชีนี้ไม่มีสิทธิ์สร้างงาน" : "This account cannot create jobs");
@@ -5323,6 +5347,10 @@ document.addEventListener("click", e => {
   }
   if (e.target.closest("#changeOwnPasswordBtn")) {
     openPasswordModal(currentUser.id);
+    closeAccountMenu();
+  }
+  if (e.target.closest("#changeInterfaceModeBtn")) {
+    openInterfacePicker(true);
     closeAccountMenu();
   }
   if (e.target.closest("#exportEmployeesBtn") && currentUser.role === "admin") {
