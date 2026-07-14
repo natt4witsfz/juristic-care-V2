@@ -55,6 +55,7 @@ https://github.com/ort83tester-arch/juristic-care-V2.git
 6. `06-NEXT-WORK.md`
 7. `07-FILE-MAP.md`
 8. `08-CODEX-PROMPT-FOR-NEXT-AGENT.md`
+9. `09-UNIVERSAL-AI-CONTINUATION-PROMPT.md`
 
 ## คำสั่งเช็กก่อนทำงานต่อ
 
@@ -71,4 +72,3 @@ Expected baseline ล่าสุด:
 
 - `npm run check` ผ่าน
 - `npm test` ผ่าน: 72 tests, 57 pass, 0 fail, 15 todo
-
