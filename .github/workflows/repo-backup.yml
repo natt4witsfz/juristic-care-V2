@@ -1,0 +1,40 @@
+name: Repository Full Backup
+
+on:
+  push:
+    paths:
+      - '.github/workflows/repo-backup.yml'
+  pull_request:
+    paths:
+      - '.github/repo-backup-trigger/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git fetch --force --tags origin
+          mkdir -p repo-backup
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BUNDLE="repo-backup/${REPO_NAME}.bundle"
+          git bundle create "$BUNDLE" --all
+          git show-ref > repo-backup/refs.txt
+          sha256sum "$BUNDLE" > repo-backup/SHA256.txt
+          git bundle verify "$BUNDLE" > repo-backup/verify.txt 2>&1
+          printf '{"repository":"%s","run_id":"%s","sha":"%s","generated_at":"%s"}\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > repo-backup/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo-backup-${{ github.event.repository.name }}
+          path: repo-backup/
+          if-no-files-found: error
+          retention-days: 7
